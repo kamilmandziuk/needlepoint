@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0/capabilities",
+  "identifier": "default",
+  "description": "Default capabilities for Needlepoint",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "dialog:allow-open",
+    "dialog:allow-save"
+  ]
+}
