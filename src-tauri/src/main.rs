@@ -16,6 +16,7 @@ fn main() {
             commands::graph::delete_node,
             commands::graph::add_edge,
             commands::graph::delete_edge,
+            commands::graph::check_would_create_cycle,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

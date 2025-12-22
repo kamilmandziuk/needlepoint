@@ -6,6 +6,71 @@ import type {
 } from '../lib/types';
 import { loadProjectFromPath, saveProjectToPath, selectProjectFolder } from '../lib/tauri';
 
+// Check if adding an edge would create a cycle using DFS
+function wouldCreateCycle(
+  nodes: CodeNode[],
+  edges: CodeEdge[],
+  source: string,
+  target: string
+): boolean {
+  // Build adjacency list including the new edge
+  const adjacency = new Map<string, string[]>();
+
+  // Initialize adjacency list for all nodes
+  for (const node of nodes) {
+    adjacency.set(node.id, []);
+  }
+
+  // Add existing edges
+  for (const edge of edges) {
+    const targets = adjacency.get(edge.source);
+    if (targets) {
+      targets.push(edge.target);
+    }
+  }
+
+  // Add the proposed new edge
+  const sourceTargets = adjacency.get(source);
+  if (sourceTargets) {
+    sourceTargets.push(target);
+  }
+
+  // DFS to detect cycles
+  const visited = new Set<string>();
+  const recursionStack = new Set<string>();
+
+  function hasCycle(nodeId: string): boolean {
+    if (recursionStack.has(nodeId)) {
+      return true; // Cycle detected
+    }
+    if (visited.has(nodeId)) {
+      return false; // Already processed, no cycle from here
+    }
+
+    visited.add(nodeId);
+    recursionStack.add(nodeId);
+
+    const neighbors = adjacency.get(nodeId) || [];
+    for (const neighbor of neighbors) {
+      if (hasCycle(neighbor)) {
+        return true;
+      }
+    }
+
+    recursionStack.delete(nodeId);
+    return false;
+  }
+
+  // Check for cycles starting from any node
+  for (const node of nodes) {
+    if (!visited.has(node.id) && hasCycle(node.id)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 interface ProjectState {
   project: Project | null;
   selectedNodeId: string | null;
@@ -21,7 +86,7 @@ interface ProjectState {
   addNode: (node: Omit<CodeNode, 'id'>) => void;
   updateNode: (id: string, updates: Partial<CodeNode>) => void;
   deleteNode: (id: string) => void;
-  addEdge: (edge: Omit<CodeEdge, 'id'>) => void;
+  addEdge: (edge: Omit<CodeEdge, 'id'>) => { success: boolean; error?: string };
   updateEdge: (id: string, updates: Partial<CodeEdge>) => void;
   deleteEdge: (id: string) => void;
 }
@@ -139,7 +204,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   addEdge: (edgeData) => {
     const { project } = get();
-    if (!project) return;
+    if (!project) return { success: false, error: 'No project loaded' };
+
+    // Check for self-loop
+    if (edgeData.source === edgeData.target) {
+      return { success: false, error: 'Cannot create an edge from a node to itself' };
+    }
+
+    // Check if edge already exists
+    const edgeExists = project.edges.some(
+      (e) => e.source === edgeData.source && e.target === edgeData.target
+    );
+    if (edgeExists) {
+      return { success: false, error: 'Edge already exists' };
+    }
+
+    // Check for cycles
+    if (wouldCreateCycle(project.nodes, project.edges, edgeData.source, edgeData.target)) {
+      return { success: false, error: 'Adding this edge would create a circular dependency' };
+    }
 
     const newEdge: CodeEdge = {
       ...edgeData,
@@ -152,6 +235,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         edges: [...project.edges, newEdge],
       },
     });
+
+    return { success: true };
   },
 
   updateEdge: (id, updates) => {

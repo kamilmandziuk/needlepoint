@@ -121,3 +121,9 @@ pub fn delete_edge(mut project: Project, edge_id: String) -> Result<Project, Str
 
     Ok(project)
 }
+
+/// Check if adding an edge would create a cycle
+#[command]
+pub fn check_would_create_cycle(project: Project, source: String, target: String) -> bool {
+    would_create_cycle(&project, &source, &target)
+}

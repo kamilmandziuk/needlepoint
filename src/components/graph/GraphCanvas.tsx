@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useEffect } from 'react';
+import { useCallback, useMemo, useEffect, useState } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
   MiniMap,
@@ -8,14 +9,18 @@ import {
   useEdgesState,
   Connection,
   BackgroundVariant,
+  useReactFlow,
 } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { Plus, Trash2, Copy, Play, Settings, ArrowRight } from 'lucide-react';
 
 import { useProjectStore } from '../../stores/projectStore';
 import CodeNode from './CodeNode';
 import DependencyEdge from './DependencyEdge';
-import type { CodeNode as CodeNodeType, CodeEdge, NodeStatus } from '../../lib/types';
+import ContextMenu from './ContextMenu';
+import type { ContextMenuOption } from './ContextMenu';
+import type { CodeNode as CodeNodeType, CodeEdge, NodeStatus, EdgeType } from '../../lib/types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const nodeTypes: any = {
@@ -28,17 +33,22 @@ const edgeTypes: any = {
 };
 
 // Convert our CodeNode to ReactFlow Node
-function toFlowNode(node: CodeNodeType): Node {
+function toFlowNode(node: CodeNodeType, edges: CodeEdge[], totalNodes: number): Node {
+  // Check if node is orphan (not connected to any edge)
+  const isOrphan = totalNodes > 1 && !edges.some(
+    (e) => e.source === node.id || e.target === node.id
+  );
+
   return {
     id: node.id,
     type: 'codeNode',
     position: node.position,
-    data: node as unknown as Record<string, unknown>,
+    data: { ...node, isOrphan } as unknown as Record<string, unknown>,
   };
 }
 
 // Convert our CodeEdge to ReactFlow Edge
-function toFlowEdge(edge: CodeEdge): Edge {
+function toFlowEdge(edge: CodeEdge, isSelected: boolean): Edge {
   return {
     id: edge.id,
     source: edge.source,
@@ -46,27 +56,45 @@ function toFlowEdge(edge: CodeEdge): Edge {
     type: 'dependency',
     data: edge as unknown as Record<string, unknown>,
     animated: false,
+    selected: isSelected,
   };
 }
 
-export default function GraphCanvas() {
+interface ContextMenuState {
+  x: number;
+  y: number;
+  type: 'pane' | 'node' | 'edge';
+  targetId?: string;
+}
+
+function GraphCanvasInner() {
   const {
     project,
+    selectedNodeId,
     setSelectedNode,
     updateNode,
+    deleteNode,
     addEdge: addProjectEdge,
+    updateEdge,
+    deleteEdge,
     addNode,
   } = useProjectStore();
 
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  const reactFlowInstance = useReactFlow();
+
   // Convert project nodes/edges to ReactFlow format
-  const flowNodes = useMemo(
-    () => (project?.nodes || []).map(toFlowNode),
-    [project?.nodes]
-  );
+  const flowNodes = useMemo(() => {
+    const projectNodes = project?.nodes || [];
+    const projectEdges = project?.edges || [];
+    return projectNodes.map((node) => toFlowNode(node, projectEdges, projectNodes.length));
+  }, [project?.nodes, project?.edges]);
 
   const flowEdges = useMemo(
-    () => (project?.edges || []).map(toFlowEdge),
-    [project?.edges]
+    () => (project?.edges || []).map((edge) => toFlowEdge(edge, edge.id === selectedEdgeId)),
+    [project?.edges, selectedEdgeId]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(flowNodes);
@@ -80,6 +108,36 @@ export default function GraphCanvas() {
   useEffect(() => {
     setEdges(flowEdges);
   }, [flowEdges, setEdges]);
+
+  // Close context menu
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  // Handle keyboard events for delete
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        // Delete selected node
+        if (selectedNodeId) {
+          deleteNode(selectedNodeId);
+          setSelectedNode(null);
+        }
+        // Delete selected edge
+        if (selectedEdgeId) {
+          deleteEdge(selectedEdgeId);
+          setSelectedEdgeId(null);
+        }
+      }
+      // Escape to deselect and close context menu
+      if (event.key === 'Escape') {
+        setSelectedNode(null);
+        setSelectedEdgeId(null);
+        closeContextMenu();
+      }
+    },
+    [selectedNodeId, selectedEdgeId, deleteNode, deleteEdge, setSelectedNode, closeContextMenu]
+  );
 
   // Sync ReactFlow state back to project store
   const handleNodesChange = useCallback(
@@ -101,7 +159,7 @@ export default function GraphCanvas() {
   const handleConnect = useCallback(
     (connection: Connection) => {
       if (connection.source && connection.target) {
-        addProjectEdge({
+        const result = addProjectEdge({
           source: connection.source,
           target: connection.target,
           type: 'imports',
@@ -109,6 +167,10 @@ export default function GraphCanvas() {
             description: '',
           },
         });
+        if (!result.success && result.error) {
+          // Show error notification
+          alert(result.error);
+        }
       }
     },
     [addProjectEdge]
@@ -118,28 +180,38 @@ export default function GraphCanvas() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (_: React.MouseEvent, node: any) => {
       setSelectedNode(node.id);
+      setSelectedEdgeId(null);
+      closeContextMenu();
     },
-    [setSelectedNode]
+    [setSelectedNode, closeContextMenu]
+  );
+
+  const handleEdgeClick = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (_: React.MouseEvent, edge: any) => {
+      setSelectedEdgeId(edge.id);
+      setSelectedNode(null);
+      closeContextMenu();
+    },
+    [setSelectedNode, closeContextMenu]
   );
 
   const handlePaneClick = useCallback(() => {
     setSelectedNode(null);
-  }, [setSelectedNode]);
+    setSelectedEdgeId(null);
+    closeContextMenu();
+  }, [setSelectedNode, closeContextMenu]);
 
-  const handleContextMenu = useCallback(
-    (event: React.MouseEvent) => {
-      event.preventDefault();
-
+  // Add node at position
+  const addNodeAtPosition = useCallback(
+    (screenX: number, screenY: number) => {
       if (!project) return;
 
-      // Get position relative to canvas
-      const bounds = (event.target as HTMLElement).getBoundingClientRect();
-      const position = {
-        x: event.clientX - bounds.left,
-        y: event.clientY - bounds.top,
-      };
+      const position = reactFlowInstance.screenToFlowPosition({
+        x: screenX,
+        y: screenY,
+      });
 
-      // Add a new node at click position
       addNode({
         name: 'NewFile',
         filePath: 'src/new-file.ts',
@@ -156,8 +228,144 @@ export default function GraphCanvas() {
         position,
       });
     },
-    [project, addNode]
+    [project, addNode, reactFlowInstance]
   );
+
+  // Duplicate node
+  const duplicateNode = useCallback(
+    (nodeId: string) => {
+      const node = project?.nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+
+      addNode({
+        ...node,
+        name: `${node.name}_copy`,
+        filePath: node.filePath.replace(/(\.[^.]+)$/, '_copy$1'),
+        position: {
+          x: node.position.x + 50,
+          y: node.position.y + 50,
+        },
+      });
+    },
+    [project?.nodes, addNode]
+  );
+
+  // Context menu for pane (empty canvas area)
+  const handlePaneContextMenu = useCallback(
+    (event: MouseEvent | React.MouseEvent) => {
+      event.preventDefault();
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        type: 'pane',
+      });
+    },
+    []
+  );
+
+  // Context menu for nodes
+  const handleNodeContextMenu = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (event: React.MouseEvent, node: any) => {
+      event.preventDefault();
+      setSelectedNode(node.id);
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        type: 'node',
+        targetId: node.id,
+      });
+    },
+    [setSelectedNode]
+  );
+
+  // Context menu for edges
+  const handleEdgeContextMenu = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (event: React.MouseEvent, edge: any) => {
+      event.preventDefault();
+      setSelectedEdgeId(edge.id);
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        type: 'edge',
+        targetId: edge.id,
+      });
+    },
+    []
+  );
+
+  // Build context menu options based on type
+  const contextMenuOptions = useMemo((): ContextMenuOption[] => {
+    if (!contextMenu) return [];
+
+    if (contextMenu.type === 'pane') {
+      return [
+        {
+          label: 'Add Node',
+          icon: <Plus size={14} />,
+          onClick: () => addNodeAtPosition(contextMenu.x, contextMenu.y),
+        },
+      ];
+    }
+
+    if (contextMenu.type === 'node' && contextMenu.targetId) {
+      const nodeId = contextMenu.targetId;
+      return [
+        {
+          label: 'Generate Code',
+          icon: <Play size={14} />,
+          onClick: () => {
+            // TODO: Implement code generation
+            console.log('Generate code for node:', nodeId);
+          },
+        },
+        {
+          label: 'Duplicate',
+          icon: <Copy size={14} />,
+          onClick: () => duplicateNode(nodeId),
+        },
+        {
+          label: 'Edit Settings',
+          icon: <Settings size={14} />,
+          onClick: () => setSelectedNode(nodeId),
+        },
+        {
+          label: 'Delete',
+          icon: <Trash2 size={14} />,
+          onClick: () => {
+            deleteNode(nodeId);
+            setSelectedNode(null);
+          },
+          danger: true,
+        },
+      ];
+    }
+
+    if (contextMenu.type === 'edge' && contextMenu.targetId) {
+      const edgeId = contextMenu.targetId;
+      const edgeTypes: EdgeType[] = ['imports', 'implements', 'extends', 'calls', 'uses'];
+
+      return [
+        ...edgeTypes.map((type) => ({
+          label: `Change to "${type}"`,
+          icon: <ArrowRight size={14} />,
+          onClick: () => updateEdge(edgeId, { type }),
+        })),
+        {
+          label: 'Delete',
+          icon: <Trash2 size={14} />,
+          onClick: () => {
+            deleteEdge(edgeId);
+            setSelectedEdgeId(null);
+          },
+          danger: true,
+        },
+      ];
+    }
+
+    return [];
+  }, [contextMenu, addNodeAtPosition, duplicateNode, deleteNode, deleteEdge, updateEdge, setSelectedNode]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getNodeColor = (node: any) => {
@@ -190,32 +398,57 @@ export default function GraphCanvas() {
   }
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={handleNodesChange}
-      onEdgesChange={onEdgesChange}
-      onConnect={handleConnect}
-      onNodeClick={handleNodeClick}
-      onPaneClick={handlePaneClick}
-      onContextMenu={handleContextMenu}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      fitView
-      proOptions={{ hideAttribution: true }}
-      className="bg-canvas-bg"
-    >
-      <Background
-        variant={BackgroundVariant.Dots}
-        gap={20}
-        size={1}
-        color="#374151"
-      />
-      <Controls className="bg-gray-800 border-gray-700" />
-      <MiniMap
-        className="bg-gray-800 border-gray-700"
-        nodeColor={getNodeColor}
-      />
-    </ReactFlow>
+    <div className="w-full h-full" onKeyDown={handleKeyDown} tabIndex={0}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={handleNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={handleConnect}
+        onNodeClick={handleNodeClick}
+        onEdgeClick={handleEdgeClick}
+        onPaneClick={handlePaneClick}
+        onPaneContextMenu={handlePaneContextMenu}
+        onNodeContextMenu={handleNodeContextMenu}
+        onEdgeContextMenu={handleEdgeContextMenu}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        fitView
+        proOptions={{ hideAttribution: true }}
+        className="bg-canvas-bg"
+        deleteKeyCode={null}
+      >
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={20}
+          size={1}
+          color="#374151"
+        />
+        <Controls className="bg-gray-800 border-gray-700" />
+        <MiniMap
+          className="bg-gray-800 border-gray-700"
+          nodeColor={getNodeColor}
+        />
+      </ReactFlow>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          options={contextMenuOptions}
+          onClose={closeContextMenu}
+        />
+      )}
+    </div>
+  );
+}
+
+// Wrapper to provide ReactFlow context
+export default function GraphCanvas() {
+  return (
+    <ReactFlowProvider>
+      <GraphCanvasInner />
+    </ReactFlowProvider>
   );
 }
