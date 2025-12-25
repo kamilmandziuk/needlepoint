@@ -1,0 +1,286 @@
+================================================================================
+NEEDLEPOINT - Implementation State
+Last Updated: 2025-12-25
+================================================================================
+
+PROJECT OVERVIEW
+----------------
+Needlepoint is a graph-based LLM code orchestration platform built with:
+- Backend: Rust + Tauri 2.0
+- Frontend: React 18 + TypeScript + Vite
+- Graph Visualization: @xyflow/react v12
+- State Management: Zustand
+- Code Editor: Monaco Editor
+- Styling: Tailwind CSS
+
+The application allows users to define software architecture as a directed graph
+where each node represents a code file with metadata, and edges represent
+dependencies. LLM instances can generate code for nodes based on their
+descriptions and dependency context.
+
+================================================================================
+IMPLEMENTATION STATUS
+================================================================================
+
+PHASE 1: Foundation - COMPLETE
+- Tauri + React project initialized
+- Core Rust data structures (Node, Edge, Project)
+- YAML serialization/deserialization
+- Tauri commands: load_project, save_project
+- ReactFlow graph visualization
+- Basic node rendering
+
+PHASE 2: Graph Editing - COMPLETE
+- Node CRUD operations (create, edit, delete)
+- Edge operations (connect, delete, edit label)
+- Context menus for nodes and edges
+- Keyboard shortcuts (Delete/Backspace)
+- Cycle detection (frontend DFS + backend petgraph)
+- Validation indicators (orphan nodes, missing metadata)
+- Node metadata editor (General, Exports, LLM Config tabs)
+
+PHASE 3: LLM Integration - COMPLETE
+- LLM Provider abstraction layer (trait-based)
+- Anthropic Claude API implementation
+- OpenAI API implementation
+- Ollama local LLM implementation
+- Context builder (assembles prompts from graph dependencies)
+- Generation commands (generate_node, preview_prompt)
+- Monaco editor for code preview/editing
+- Prompt preview feature
+- Settings panel for API key management
+- Persistent API key storage (tauri-plugin-store)
+
+PHASE 4: Parallel Orchestration - COMPLETE
+- Topological sort for dependency ordering (Kahn's algorithm)
+- Wave-based execution plan (nodes grouped by dependency level)
+- Task executor with concurrent generation (tokio + futures)
+- Real-time progress via Tauri events
+- Execution monitor UI with progress bar and live logs
+- Context-aware generation (includes actual generated code from dependencies)
+- Automatic markdown code block stripping from LLM output
+- Flexible edge labels (free-form text instead of fixed types)
+- Edge editor panel in properties sidebar
+
+PHASE 5: Polish & Advanced Features - NOT STARTED
+- Project templates
+- Validation hooks (compile/lint checks)
+- Git integration
+- Settings & themes
+- Incremental generation (only regenerate changed nodes)
+
+================================================================================
+KEY FILES - BACKEND (src-tauri/src/)
+================================================================================
+
+main.rs
+  - Tauri entry point
+  - Registers plugins: shell, dialog, store
+  - Registers all command handlers
+
+commands/
+  mod.rs           - Module exports
+  project.rs       - load_project, save_project commands
+  graph.rs         - add_node, update_node, delete_node, add_edge, delete_edge,
+                     check_would_create_cycle
+  generation.rs    - generate_node(project, node_id, api_key), preview_prompt
+  orchestration.rs - get_execution_plan, generate_all, generate_nodes
+
+graph/
+  mod.rs           - Module exports
+  model.rs         - Core data structures: CodeNode, CodeEdge, Project,
+                     LLMConfig, ExportSignature, Language, NodeStatus
+  serialization.rs - YAML read/write functions
+  validation.rs    - Cycle detection, validation
+
+llm/
+  mod.rs           - Module exports + create_provider() factory function
+  provider.rs      - LLMProvider trait, GenerationRequest, GenerationResponse,
+                     LLMError types
+  anthropic.rs     - AnthropicProvider implementation (Claude API)
+  openai.rs        - OpenAIProvider implementation (OpenAI API)
+  ollama.rs        - OllamaProvider implementation (local Ollama)
+  context.rs       - ContextBuilder: builds prompts from node metadata and
+                     graph dependencies, includes generated code from deps,
+                     strip_code_blocks() for cleaning LLM output
+
+orchestration/
+  mod.rs           - Module exports
+  planner.rs       - ExecutionPlan, ExecutionWave, topological sort
+  executor.rs      - Executor: concurrent wave-based generation
+  events.rs        - ExecutionEvent types for Tauri event streaming
+
+Cargo.toml dependencies:
+  - tauri, tauri-plugin-shell, tauri-plugin-dialog, tauri-plugin-store
+  - serde, serde_yaml, serde_json
+  - tokio, reqwest, async-trait, futures
+  - uuid, petgraph, anyhow, thiserror, regex
+
+================================================================================
+KEY FILES - FRONTEND (src/)
+================================================================================
+
+App.tsx
+  - Root component
+  - Manages settings panel and execution monitor visibility
+  - Loads settings on startup
+
+main.tsx
+  - React entry point
+
+lib/
+  types.ts         - TypeScript types matching Rust structs, includes
+                     ExecutionPlan, ExecutionEvent, NodeProgress
+  tauri.ts         - IPC command wrappers including getExecutionPlan,
+                     generateAll, generateNodes, onExecutionProgress
+
+stores/
+  projectStore.ts  - Zustand store for project state, includes cycle detection,
+                     selectedNodeId and selectedEdgeId
+  settingsStore.ts - Zustand store for settings, uses tauri-plugin-store for
+                     persistence (API keys, Ollama URL)
+  executionStore.ts - Zustand store for execution state, progress tracking,
+                      logs, event handling
+
+components/
+  layout/
+    Sidebar.tsx         - Left sidebar with New, Open, Save, Generate All,
+                          Settings buttons
+    Canvas.tsx          - Main graph canvas area
+    PropertiesPanel.tsx - Right panel showing selected node or edge editor
+
+  graph/
+    GraphCanvas.tsx     - ReactFlow wrapper with context menus, keyboard
+                          shortcuts, cycle detection, edge selection
+    CodeNode.tsx        - Custom node component with status colors and
+                          validation indicators
+    DependencyEdge.tsx  - Custom edge component with wrapping labels
+    ContextMenu.tsx     - Right-click context menu for nodes/edges
+
+  editor/
+    NodeEditor.tsx      - Tabbed editor (General, Exports, LLM Config, Code)
+    EdgeEditor.tsx      - Edge properties editor with label input and templates
+    ExportsEditor.tsx   - Editor for function/class exports
+    LLMConfigEditor.tsx - Editor for LLM provider, model, constraints
+    CodePreview.tsx     - Monaco editor with code/prompt tabs, generate button
+
+  execution/
+    ExecutionMonitor.tsx - Modal with progress bar, wave status, live logs,
+                           start/stop/retry controls
+
+  settings/
+    SettingsPanel.tsx   - Modal for API key configuration
+
+================================================================================
+CONFIGURATION FILES
+================================================================================
+
+src-tauri/tauri.conf.json
+  - App configuration (window size, plugins, etc.)
+  - Plugins enabled: shell, store
+
+src-tauri/capabilities/default.json
+  - Permissions: core:default, shell:allow-open, dialog:allow-open,
+    dialog:allow-save, store:allow-get, store:allow-set, store:allow-save,
+    store:allow-load
+
+package.json dependencies:
+  - @tauri-apps/api, @tauri-apps/plugin-dialog, @tauri-apps/plugin-shell,
+    @tauri-apps/plugin-store
+  - @xyflow/react, @monaco-editor/react
+  - react, react-dom, react-hook-form
+  - zustand, lucide-react
+
+tailwind.config.js
+  - Custom colors for canvas background, node states
+
+================================================================================
+RECENT CHANGES (Phase 4: Parallel Orchestration)
+================================================================================
+
+1. Orchestration Backend:
+   - planner.rs: Topological sort using Kahn's algorithm, groups nodes into
+     waves based on dependency depth
+   - executor.rs: Concurrent execution of waves using tokio/futures,
+     real-time progress via Tauri events
+   - events.rs: Event types (Started, WaveStarted, NodeUpdate, WaveCompleted,
+     Completed, Cancelled, Error)
+
+2. Context-Aware Generation:
+   - context.rs now includes actual generated code from dependencies in prompts
+   - Dependent files can see and import from their dependency implementations
+   - Automatic stripping of markdown code blocks from LLM output
+
+3. Execution Monitor UI:
+   - executionStore.ts: Manages execution state, listens to Tauri events
+   - ExecutionMonitor.tsx: Modal with progress bar, wave info, live log stream
+   - Visual node status updates during generation (pending/generating/complete/error)
+
+4. Flexible Edge System:
+   - Removed fixed EdgeType enum (imports, implements, extends, etc.)
+   - Edges now have free-form text labels
+   - EdgeEditor.tsx: Properties panel for editing edge descriptions
+   - Quick template buttons for common relationship types
+   - Edge labels wrap properly on the graph
+
+================================================================================
+HOW TO RUN
+================================================================================
+
+Development:
+  cd needlepoint
+  npm run tauri dev
+
+Build:
+  cd needlepoint
+  npm run tauri build
+
+================================================================================
+HOW TO TEST PARALLEL GENERATION
+================================================================================
+
+1. Run the app: npm run tauri dev
+2. Click Settings (gear icon) and enter your Anthropic API key
+3. Create a new project or open existing
+4. Add multiple nodes with dependencies:
+   - Node A: Base types/utilities (no dependencies)
+   - Node B: Depends on A (connect A -> B)
+   - Node C: Depends on A (connect A -> C)
+   - Node D: Depends on B and C (connect B -> D, C -> D)
+5. Click the green Play button in sidebar to open Execution Monitor
+6. Click "Start" to begin generation
+7. Watch:
+   - Wave 1: Node A generates first
+   - Wave 2: Nodes B and C generate in parallel
+   - Wave 3: Node D generates (has access to B and C code)
+8. Check that generated code correctly imports from dependencies
+
+================================================================================
+NEXT STEPS (Phase 5: Polish & Advanced Features)
+================================================================================
+
+1. Project templates (starter graphs for common architectures)
+2. Validation hooks (run compile/lint after generation)
+3. Git integration (commit generated code)
+4. Settings & themes (dark/light mode, custom colors)
+5. Incremental generation (track changes, only regenerate affected nodes)
+6. Streaming support (show generation progress character-by-character)
+
+================================================================================
+KNOWN ISSUES / WARNINGS
+================================================================================
+
+- Rust warnings about unused code (expected - functions for later phases)
+- No streaming support yet (responses come all at once)
+- No validation/compile checks after generation
+- Cancel button in execution monitor doesn't actually cancel in-flight requests
+
+================================================================================
+GIT REPOSITORY
+================================================================================
+
+Remote: git@github.com-personal:kamilmandziuk/needlepoint
+Branch: main
+License: AGPL
+
+================================================================================

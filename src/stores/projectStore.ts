@@ -74,12 +74,14 @@ function wouldCreateCycle(
 interface ProjectState {
   project: Project | null;
   selectedNodeId: string | null;
+  selectedEdgeId: string | null;
   isLoading: boolean;
   error: string | null;
 
   // Actions
   setProject: (project: Project | null) => void;
   setSelectedNode: (nodeId: string | null) => void;
+  setSelectedEdge: (edgeId: string | null) => void;
   createProject: () => Promise<void>;
   loadProject: () => Promise<void>;
   saveProject: () => Promise<void>;
@@ -94,12 +96,15 @@ interface ProjectState {
 export const useProjectStore = create<ProjectState>((set, get) => ({
   project: null,
   selectedNodeId: null,
+  selectedEdgeId: null,
   isLoading: false,
   error: null,
 
   setProject: (project) => set({ project }),
 
-  setSelectedNode: (nodeId) => set({ selectedNodeId: nodeId }),
+  setSelectedNode: (nodeId) => set({ selectedNodeId: nodeId, selectedEdgeId: null }),
+
+  setSelectedEdge: (edgeId) => set({ selectedEdgeId: edgeId, selectedNodeId: null }),
 
   createProject: async () => {
     try {
@@ -254,7 +259,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   deleteEdge: (id) => {
-    const { project } = get();
+    const { project, selectedEdgeId } = get();
     if (!project) return;
 
     set({
@@ -262,6 +267,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ...project,
         edges: project.edges.filter((edge) => edge.id !== id),
       },
+      selectedEdgeId: selectedEdgeId === id ? null : selectedEdgeId,
     });
   },
 }));

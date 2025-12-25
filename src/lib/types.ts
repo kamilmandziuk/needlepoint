@@ -4,7 +4,6 @@ export type NodeStatus = 'pending' | 'generating' | 'complete' | 'error' | 'warn
 
 export type LLMProvider = 'anthropic' | 'openai' | 'ollama';
 
-export type EdgeType = 'imports' | 'implements' | 'extends' | 'calls' | 'uses';
 
 export type Language = 'typescript' | 'javascript' | 'python' | 'rust' | 'go';
 
@@ -41,11 +40,8 @@ export interface CodeEdge {
   id: string;
   source: string;
   target: string;
-  type: EdgeType;
-  metadata: {
-    description: string;
-    importedSymbols?: string[];
-  };
+  /** Human-readable label describing the relationship */
+  label: string;
 }
 
 export interface ProjectManifest {
@@ -82,3 +78,38 @@ export const DEFAULT_PROJECT_MANIFEST: ProjectManifest = {
     apiKeyEnv: 'ANTHROPIC_API_KEY',
   },
 };
+
+// Orchestration types
+
+export interface ExecutionWave {
+  waveNumber: number;
+  nodeIds: string[];
+}
+
+export interface ExecutionPlan {
+  waves: ExecutionWave[];
+  totalNodes: number;
+  skippedNodes: string[];
+}
+
+export interface NodeProgress {
+  nodeId: string;
+  status: NodeStatus;
+  message?: string;
+  generatedCode?: string;
+}
+
+export type ExecutionEvent =
+  | { type: 'started'; totalNodes: number; totalWaves: number }
+  | { type: 'waveStarted'; waveNumber: number; nodeIds: string[] }
+  | { type: 'nodeUpdate' } & NodeProgress
+  | { type: 'waveCompleted'; waveNumber: number; successful: number; failed: number }
+  | { type: 'completed'; totalSuccessful: number; totalFailed: number; totalSkipped: number }
+  | { type: 'cancelled' }
+  | { type: 'error'; message: string };
+
+export interface ApiKeysInput {
+  anthropic?: string;
+  openai?: string;
+  ollamaBaseUrl?: string;
+}

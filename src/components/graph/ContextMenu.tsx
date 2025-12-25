@@ -108,13 +108,13 @@ export function createNodeContextMenuOptions(
 export function createEdgeContextMenuOptions(
   edgeId: string,
   onDelete: (id: string) => void,
-  onChangeType: (id: string) => void
+  onEditLabel: (id: string) => void
 ): ContextMenuOption[] {
   return [
     {
-      label: 'Change Type',
+      label: 'Edit Label',
       icon: <Settings size={14} />,
-      onClick: () => onChangeType(edgeId),
+      onClick: () => onEditLabel(edgeId),
     },
     {
       label: 'Delete',

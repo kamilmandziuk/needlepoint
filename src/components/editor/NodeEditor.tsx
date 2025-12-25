@@ -1,20 +1,25 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Play, Trash2, Save } from 'lucide-react';
+import { Play, Trash2, Save, Loader2 } from 'lucide-react';
 import { useProjectStore } from '../../stores/projectStore';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { generateNode } from '../../lib/tauri';
 import type { CodeNode } from '../../lib/types';
 import ExportsEditor from './ExportsEditor';
 import LLMConfigEditor from './LLMConfigEditor';
+import CodePreview from './CodePreview';
 
 interface NodeEditorProps {
   node: CodeNode;
 }
 
-type Tab = 'general' | 'exports' | 'llm';
+type Tab = 'general' | 'exports' | 'llm' | 'code';
 
 export default function NodeEditor({ node }: NodeEditorProps) {
-  const { updateNode, deleteNode } = useProjectStore();
+  const { project, updateNode, deleteNode } = useProjectStore();
+  const { getApiKey } = useSettingsStore();
   const [activeTab, setActiveTab] = useState<Tab>('general');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const { register, handleSubmit } = useForm<CodeNode>({
     defaultValues: node,
@@ -24,10 +29,38 @@ export default function NodeEditor({ node }: NodeEditorProps) {
     updateNode(node.id, data);
   };
 
+  const handleGenerate = async () => {
+    if (!project) return;
+
+    setIsGenerating(true);
+    updateNode(node.id, { status: 'generating' });
+
+    try {
+      // Get API key from settings based on the node's LLM provider
+      const apiKey = getApiKey(node.llmConfig.provider);
+      const code = await generateNode(project, node.id, apiKey || undefined);
+      updateNode(node.id, {
+        generatedCode: code,
+        status: 'complete',
+        errorMessage: undefined,
+      });
+      setActiveTab('code');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      updateNode(node.id, {
+        status: 'error',
+        errorMessage,
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const tabs: { id: Tab; label: string }[] = [
     { id: 'general', label: 'General' },
     { id: 'exports', label: 'Exports' },
     { id: 'llm', label: 'LLM Config' },
+    { id: 'code', label: 'Code' },
   ];
 
   return (
@@ -38,10 +71,20 @@ export default function NodeEditor({ node }: NodeEditorProps) {
           <h2 className="font-semibold text-white truncate">{node.name}</h2>
           <div className="flex gap-1">
             <button
-              className="p-1.5 rounded hover:bg-gray-800 text-green-500 hover:text-green-400"
-              title="Generate"
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              className={`p-1.5 rounded ${
+                isGenerating
+                  ? 'text-gray-500 cursor-not-allowed'
+                  : 'hover:bg-gray-800 text-green-500 hover:text-green-400'
+              }`}
+              title={isGenerating ? 'Generating...' : 'Generate'}
             >
-              <Play size={16} />
+              {isGenerating ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Play size={16} />
+              )}
             </button>
             <button
               onClick={() => deleteNode(node.id)}
@@ -160,17 +203,26 @@ export default function NodeEditor({ node }: NodeEditorProps) {
           />
         )}
 
-        {/* Save button */}
-        <div className="mt-4 pt-4 border-t border-gray-800">
-          <button
-            type="submit"
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium transition-colors"
-          >
-            <Save size={16} />
-            Save Changes
-          </button>
-        </div>
+        {/* Save button - only show for non-code tabs */}
+        {activeTab !== 'code' && (
+          <div className="mt-4 pt-4 border-t border-gray-800">
+            <button
+              type="submit"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium transition-colors"
+            >
+              <Save size={16} />
+              Save Changes
+            </button>
+          </div>
+        )}
       </form>
+
+      {/* Code tab - rendered outside form */}
+      {activeTab === 'code' && (
+        <div className="flex-1 min-h-0">
+          <CodePreview node={node} />
+        </div>
+      )}
     </div>
   );
 }

@@ -5,23 +5,9 @@ import {
   getBezierPath,
   Position,
 } from '@xyflow/react';
-import type { CodeEdge, EdgeType } from '../../lib/types';
+import type { CodeEdge } from '../../lib/types';
 
-const edgeTypeColors: Record<EdgeType, string> = {
-  imports: '#60a5fa', // blue
-  implements: '#a78bfa', // purple
-  extends: '#f472b6', // pink
-  calls: '#34d399', // green
-  uses: '#fbbf24', // yellow
-};
-
-const edgeTypeLabels: Record<EdgeType, string> = {
-  imports: 'imports',
-  implements: 'implements',
-  extends: 'extends',
-  calls: 'calls',
-  uses: 'uses',
-};
+const EDGE_COLOR = '#60a5fa'; // blue
 
 interface DependencyEdgeProps {
   id: string;
@@ -55,8 +41,7 @@ function DependencyEdgeComponent({
     targetPosition,
   });
 
-  const edgeType = data?.type ?? 'imports';
-  const color = edgeTypeColors[edgeType];
+  const label = data?.label || '';
 
   return (
     <>
@@ -64,46 +49,46 @@ function DependencyEdgeComponent({
         id={id}
         path={edgePath}
         style={{
-          stroke: color,
+          stroke: EDGE_COLOR,
           strokeWidth: selected ? 3 : 2,
           opacity: selected ? 1 : 0.7,
         }}
-        markerEnd={`url(#arrow-${edgeType})`}
+        markerEnd="url(#arrow-dependency)"
       />
-      <EdgeLabelRenderer>
-        <div
-          style={{
-            position: 'absolute',
-            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            pointerEvents: 'all',
-          }}
-          className={`
-            text-xs px-2 py-0.5 rounded-full
-            ${selected ? 'bg-gray-700' : 'bg-gray-800/80'}
-            border border-gray-600
-          `}
-        >
-          <span style={{ color }}>{edgeTypeLabels[edgeType]}</span>
-        </div>
-      </EdgeLabelRenderer>
+      {label && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              pointerEvents: 'all',
+            }}
+            className={`
+              text-xs px-2 py-1 rounded-lg max-w-[180px] text-center
+              ${selected ? 'bg-gray-700' : 'bg-gray-800/90'}
+              border border-gray-600 text-gray-300
+              whitespace-normal break-words
+            `}
+          >
+            {label}
+          </div>
+        </EdgeLabelRenderer>
+      )}
 
-      {/* Arrow marker definitions */}
+      {/* Arrow marker definition */}
       <svg style={{ position: 'absolute', top: 0, left: 0 }}>
         <defs>
-          {Object.entries(edgeTypeColors).map(([type, markerColor]) => (
-            <marker
-              key={type}
-              id={`arrow-${type}`}
-              viewBox="0 0 10 10"
-              refX="8"
-              refY="5"
-              markerWidth="6"
-              markerHeight="6"
-              orient="auto-start-reverse"
-            >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill={markerColor} />
-            </marker>
-          ))}
+          <marker
+            id="arrow-dependency"
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
+            <path d="M 0 0 L 10 5 L 0 10 z" fill={EDGE_COLOR} />
+          </marker>
         </defs>
       </svg>
     </>

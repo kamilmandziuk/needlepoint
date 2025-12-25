@@ -3,11 +3,14 @@
 
 mod commands;
 mod graph;
+mod llm;
+mod orchestration;
 
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             commands::project::load_project,
             commands::project::save_project,
@@ -17,6 +20,11 @@ fn main() {
             commands::graph::add_edge,
             commands::graph::delete_edge,
             commands::graph::check_would_create_cycle,
+            commands::generation::generate_node,
+            commands::generation::preview_prompt,
+            commands::orchestration::get_execution_plan,
+            commands::orchestration::generate_all,
+            commands::orchestration::generate_nodes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

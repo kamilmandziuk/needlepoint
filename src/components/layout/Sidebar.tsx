@@ -1,7 +1,12 @@
 import { FolderOpen, Save, Plus, Play, Settings } from 'lucide-react';
 import { useProjectStore } from '../../stores/projectStore';
 
-export default function Sidebar() {
+interface SidebarProps {
+  onOpenSettings: () => void;
+  onOpenExecutionMonitor: () => void;
+}
+
+export default function Sidebar({ onOpenSettings, onOpenExecutionMonitor }: SidebarProps) {
   const { project, loadProject, saveProject, createProject } = useProjectStore();
 
   return (
@@ -34,7 +39,8 @@ export default function Sidebar() {
       <div className="flex-1" />
 
       <button
-        disabled={!project}
+        onClick={onOpenExecutionMonitor}
+        disabled={!project || project.nodes.length === 0}
         className="p-3 rounded-lg hover:bg-gray-800 text-green-500 hover:text-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         title="Generate All"
       >
@@ -42,6 +48,7 @@ export default function Sidebar() {
       </button>
 
       <button
+        onClick={onOpenSettings}
         className="p-3 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
         title="Settings"
       >

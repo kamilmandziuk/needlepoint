@@ -13,14 +13,14 @@ import {
 } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Trash2, Copy, Play, Settings, ArrowRight } from 'lucide-react';
+import { Plus, Trash2, Copy, Play, Settings } from 'lucide-react';
 
 import { useProjectStore } from '../../stores/projectStore';
 import CodeNode from './CodeNode';
 import DependencyEdge from './DependencyEdge';
 import ContextMenu from './ContextMenu';
 import type { ContextMenuOption } from './ContextMenu';
-import type { CodeNode as CodeNodeType, CodeEdge, NodeStatus, EdgeType } from '../../lib/types';
+import type { CodeNode as CodeNodeType, CodeEdge, NodeStatus } from '../../lib/types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const nodeTypes: any = {
@@ -71,16 +71,16 @@ function GraphCanvasInner() {
   const {
     project,
     selectedNodeId,
+    selectedEdgeId,
     setSelectedNode,
+    setSelectedEdge,
     updateNode,
     deleteNode,
     addEdge: addProjectEdge,
-    updateEdge,
     deleteEdge,
     addNode,
   } = useProjectStore();
 
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   const reactFlowInstance = useReactFlow();
@@ -126,17 +126,17 @@ function GraphCanvasInner() {
         // Delete selected edge
         if (selectedEdgeId) {
           deleteEdge(selectedEdgeId);
-          setSelectedEdgeId(null);
+          setSelectedEdge(null);
         }
       }
       // Escape to deselect and close context menu
       if (event.key === 'Escape') {
         setSelectedNode(null);
-        setSelectedEdgeId(null);
+        setSelectedEdge(null);
         closeContextMenu();
       }
     },
-    [selectedNodeId, selectedEdgeId, deleteNode, deleteEdge, setSelectedNode, closeContextMenu]
+    [selectedNodeId, selectedEdgeId, deleteNode, deleteEdge, setSelectedNode, setSelectedEdge, closeContextMenu]
   );
 
   // Sync ReactFlow state back to project store
@@ -162,10 +162,7 @@ function GraphCanvasInner() {
         const result = addProjectEdge({
           source: connection.source,
           target: connection.target,
-          type: 'imports',
-          metadata: {
-            description: '',
-          },
+          label: '',
         });
         if (!result.success && result.error) {
           // Show error notification
@@ -180,7 +177,6 @@ function GraphCanvasInner() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (_: React.MouseEvent, node: any) => {
       setSelectedNode(node.id);
-      setSelectedEdgeId(null);
       closeContextMenu();
     },
     [setSelectedNode, closeContextMenu]
@@ -189,18 +185,17 @@ function GraphCanvasInner() {
   const handleEdgeClick = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (_: React.MouseEvent, edge: any) => {
-      setSelectedEdgeId(edge.id);
-      setSelectedNode(null);
+      setSelectedEdge(edge.id);
       closeContextMenu();
     },
-    [setSelectedNode, closeContextMenu]
+    [setSelectedEdge, closeContextMenu]
   );
 
   const handlePaneClick = useCallback(() => {
     setSelectedNode(null);
-    setSelectedEdgeId(null);
+    setSelectedEdge(null);
     closeContextMenu();
-  }, [setSelectedNode, closeContextMenu]);
+  }, [setSelectedNode, setSelectedEdge, closeContextMenu]);
 
   // Add node at position
   const addNodeAtPosition = useCallback(
@@ -284,7 +279,7 @@ function GraphCanvasInner() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (event: React.MouseEvent, edge: any) => {
       event.preventDefault();
-      setSelectedEdgeId(edge.id);
+      setSelectedEdge(edge.id);
       setContextMenu({
         x: event.clientX,
         y: event.clientY,
@@ -292,7 +287,7 @@ function GraphCanvasInner() {
         targetId: edge.id,
       });
     },
-    []
+    [setSelectedEdge]
   );
 
   // Build context menu options based on type
@@ -344,20 +339,13 @@ function GraphCanvasInner() {
 
     if (contextMenu.type === 'edge' && contextMenu.targetId) {
       const edgeId = contextMenu.targetId;
-      const edgeTypes: EdgeType[] = ['imports', 'implements', 'extends', 'calls', 'uses'];
 
       return [
-        ...edgeTypes.map((type) => ({
-          label: `Change to "${type}"`,
-          icon: <ArrowRight size={14} />,
-          onClick: () => updateEdge(edgeId, { type }),
-        })),
         {
           label: 'Delete',
           icon: <Trash2 size={14} />,
           onClick: () => {
             deleteEdge(edgeId);
-            setSelectedEdgeId(null);
           },
           danger: true,
         },
@@ -365,7 +353,7 @@ function GraphCanvasInner() {
     }
 
     return [];
-  }, [contextMenu, addNodeAtPosition, duplicateNode, deleteNode, deleteEdge, updateEdge, setSelectedNode]);
+  }, [contextMenu, addNodeAtPosition, duplicateNode, deleteNode, deleteEdge, setSelectedNode]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getNodeColor = (node: any) => {

@@ -1,7 +1,7 @@
 use tauri::command;
 use uuid::Uuid;
 
-use crate::graph::{CodeEdge, CodeNode, EdgeType, Project};
+use crate::graph::{CodeEdge, CodeNode, Project};
 use crate::graph::validation::would_create_cycle;
 
 /// Add a new node to the project
@@ -74,7 +74,7 @@ pub fn add_edge(
     mut project: Project,
     source: String,
     target: String,
-    edge_type: EdgeType,
+    label: Option<String>,
 ) -> Result<Project, String> {
     // Validate that both nodes exist
     if project.find_node(&source).is_none() {
@@ -103,7 +103,7 @@ pub fn add_edge(
         return Err("Adding this edge would create a circular dependency".to_string());
     }
 
-    let edge = CodeEdge::new(source, target, edge_type);
+    let edge = CodeEdge::new(source, target, label.unwrap_or_default());
     project.edges.push(edge);
 
     Ok(project)

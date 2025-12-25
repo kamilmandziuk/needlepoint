@@ -7,6 +7,10 @@
     "core:default",
     "shell:allow-open",
     "dialog:allow-open",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "store:allow-get",
+    "store:allow-set",
+    "store:allow-save",
+    "store:allow-load"
   ]
 }

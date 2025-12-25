@@ -23,17 +23,6 @@ pub enum LLMProvider {
     Ollama,
 }
 
-/// Type of relationship between code nodes
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum EdgeType {
-    #[default]
-    Imports,
-    Implements,
-    Extends,
-    Calls,
-    Uses,
-}
 
 /// Supported programming languages
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -45,6 +34,18 @@ pub enum Language {
     Python,
     Rust,
     Go,
+}
+
+impl std::fmt::Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Language::TypeScript => write!(f, "typescript"),
+            Language::JavaScript => write!(f, "javascript"),
+            Language::Python => write!(f, "python"),
+            Language::Rust => write!(f, "rust"),
+            Language::Go => write!(f, "go"),
+        }
+    }
 }
 
 /// Position on the graph canvas
@@ -132,15 +133,6 @@ impl CodeNode {
     }
 }
 
-/// Edge metadata
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct EdgeMetadata {
-    pub description: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub imported_symbols: Option<Vec<String>>,
-}
-
 /// An edge representing a relationship between code nodes
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -148,20 +140,18 @@ pub struct CodeEdge {
     pub id: String,
     pub source: String,
     pub target: String,
-    #[serde(rename = "type")]
-    pub edge_type: EdgeType,
+    /// Human-readable label describing the relationship (e.g., "imports types from", "extends class in")
     #[serde(default)]
-    pub metadata: EdgeMetadata,
+    pub label: String,
 }
 
 impl CodeEdge {
-    pub fn new(source: String, target: String, edge_type: EdgeType) -> Self {
+    pub fn new(source: String, target: String, label: String) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             source,
             target,
-            edge_type,
-            metadata: EdgeMetadata::default(),
+            label,
         }
     }
 }
