@@ -1,11 +1,9 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { Play, Trash2, Save, Loader2 } from 'lucide-react';
+import { Play, Trash2, Loader2 } from 'lucide-react';
 import { useProjectStore } from '../../stores/projectStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { generateNode } from '../../lib/tauri';
 import type { CodeNode } from '../../lib/types';
-import ExportsEditor from './ExportsEditor';
 import LLMConfigEditor from './LLMConfigEditor';
 import CodePreview from './CodePreview';
 
@@ -13,21 +11,13 @@ interface NodeEditorProps {
   node: CodeNode;
 }
 
-type Tab = 'general' | 'exports' | 'llm' | 'code';
+type Tab = 'general' | 'llm' | 'code';
 
 export default function NodeEditor({ node }: NodeEditorProps) {
   const { project, updateNode, deleteNode } = useProjectStore();
   const { getApiKey } = useSettingsStore();
   const [activeTab, setActiveTab] = useState<Tab>('general');
   const [isGenerating, setIsGenerating] = useState(false);
-
-  const { register, handleSubmit } = useForm<CodeNode>({
-    defaultValues: node,
-  });
-
-  const onSubmit = (data: CodeNode) => {
-    updateNode(node.id, data);
-  };
 
   const handleGenerate = async () => {
     if (!project) return;
@@ -56,9 +46,12 @@ export default function NodeEditor({ node }: NodeEditorProps) {
     }
   };
 
+  const handleChange = (field: keyof CodeNode, value: string) => {
+    updateNode(node.id, { [field]: value });
+  };
+
   const tabs: { id: Tab; label: string }[] = [
     { id: 'general', label: 'General' },
-    { id: 'exports', label: 'Exports' },
     { id: 'llm', label: 'LLM Config' },
     { id: 'code', label: 'Code' },
   ];
@@ -121,103 +114,85 @@ export default function NodeEditor({ node }: NodeEditorProps) {
       </div>
 
       {/* Tab content */}
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="flex-1 overflow-y-auto p-4"
-      >
-        {activeTab === 'general' && (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Name
-              </label>
-              <input
-                {...register('name')}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                File Path
-              </label>
-              <input
-                {...register('filePath')}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Language
-              </label>
-              <select
-                {...register('language')}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="typescript">TypeScript</option>
-                <option value="javascript">JavaScript</option>
-                <option value="python">Python</option>
-                <option value="rust">Rust</option>
-                <option value="go">Go</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Description
-              </label>
-              <textarea
-                {...register('description')}
-                rows={3}
-                placeholder="What does this file do?"
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Purpose
-              </label>
-              <textarea
-                {...register('purpose')}
-                rows={2}
-                placeholder="What is the main purpose of this file?"
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
-            </div>
+      {activeTab === 'general' && (
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Name
+            </label>
+            <input
+              value={node.name}
+              onChange={(e) => handleChange('name', e.target.value)}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
-        )}
 
-        {activeTab === 'exports' && (
-          <ExportsEditor
-            exports={node.exports}
-            onChange={(exports) => updateNode(node.id, { exports })}
-          />
-        )}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              File Path
+            </label>
+            <input
+              value={node.filePath}
+              onChange={(e) => handleChange('filePath', e.target.value)}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
 
-        {activeTab === 'llm' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Language
+            </label>
+            <select
+              value={node.language}
+              onChange={(e) => handleChange('language', e.target.value)}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="typescript">TypeScript</option>
+              <option value="javascript">JavaScript</option>
+              <option value="python">Python</option>
+              <option value="rust">Rust</option>
+              <option value="go">Go</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Description
+            </label>
+            <textarea
+              value={node.description}
+              onChange={(e) => handleChange('description', e.target.value)}
+              rows={3}
+              placeholder="What does this file do?"
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Purpose
+            </label>
+            <textarea
+              value={node.purpose}
+              onChange={(e) => handleChange('purpose', e.target.value)}
+              rows={2}
+              placeholder="What is the main purpose of this file?"
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'llm' && (
+        <div className="flex-1 overflow-y-auto p-4">
           <LLMConfigEditor
             config={node.llmConfig}
             onChange={(llmConfig) => updateNode(node.id, { llmConfig })}
           />
-        )}
+        </div>
+      )}
 
-        {/* Save button - only show for non-code tabs */}
-        {activeTab !== 'code' && (
-          <div className="mt-4 pt-4 border-t border-gray-800">
-            <button
-              type="submit"
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium transition-colors"
-            >
-              <Save size={16} />
-              Save Changes
-            </button>
-          </div>
-        )}
-      </form>
-
-      {/* Code tab - rendered outside form */}
+      {/* Code tab */}
       {activeTab === 'code' && (
         <div className="flex-1 min-h-0">
           <CodePreview node={node} />

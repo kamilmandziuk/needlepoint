@@ -26,7 +26,7 @@ export default function PropertiesPanel() {
   if (selectedNode) {
     return (
       <aside className="w-80 bg-gray-900 border-l border-gray-800 overflow-y-auto">
-        <NodeEditor node={selectedNode} />
+        <NodeEditor key={selectedNode.id} node={selectedNode} />
       </aside>
     );
   }
