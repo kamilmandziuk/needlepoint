@@ -77,12 +77,34 @@ PHASE 5: UX & Safety - COMPLETE
 - Global keyboard shortcuts (Ctrl+S save, Ctrl+A select all)
 - Confirmation dialog for multi-node delete only
 
-PHASE 6: Polish & Advanced Features - NOT STARTED
+PHASE 6: CLI & Agent Integration - COMPLETE
+- HTTP API server (axum) running alongside Tauri app on port 9999
+- Full REST API for project operations:
+  - GET /api/status - health check and server info
+  - GET /api/project - get current project
+  - POST /api/project/load - load project from file path
+  - POST /api/project/save - save current project
+  - GET/POST/PUT/DELETE /api/nodes - node CRUD operations
+  - GET/POST/DELETE /api/edges - edge operations
+  - POST /api/generate/:id - generate code for a node
+  - POST /api/generate-all - generate all nodes
+  - GET /api/execution-plan - get dependency-ordered execution plan
+  - GET /api/prompt/:id - preview prompt for a node
+  - POST /api/api-keys - set LLM provider API keys
+- needlepoint-cli binary for command-line control:
+  - status, load, save, nodes, node, edges, plan, prompt
+  - generate, generate-all, set-keys, project
+- "Launch Agent" button in GUI to open project folder
+- Shared state between GUI and HTTP API
+
+PHASE 7: Polish & Advanced Features - NOT STARTED
 - Project templates
 - Validation hooks (compile/lint checks)
 - Git integration
 - Settings & themes
 - Incremental generation (only regenerate changed nodes)
+- MCP server implementation (for direct Claude Code integration)
+- Embedded terminal (xterm.js)
 
 ================================================================================
 KEY FILES - BACKEND (src-tauri/src/)
@@ -92,9 +114,19 @@ main.rs
   - Tauri entry point
   - Registers plugins: shell, dialog, store
   - Registers all command handlers
+  - Starts HTTP API server in background on port 9999
+
+api/
+  mod.rs           - HTTP server startup (axum), CORS configuration
+  state.rs         - Shared AppState (project, API keys, port)
+  routes.rs        - All REST API route handlers
+
+bin/
+  cli.rs           - needlepoint-cli binary (clap-based CLI)
 
 commands/
   mod.rs           - Module exports
+  api.rs           - get_api_port command for frontend
   project.rs       - load_project, save_project commands
   graph.rs         - add_node, update_node, delete_node, add_edge, delete_edge,
                      check_would_create_cycle
@@ -134,6 +166,8 @@ Cargo.toml dependencies:
   - serde, serde_yaml, serde_json
   - tokio, reqwest, async-trait, futures
   - uuid, petgraph, anyhow, thiserror, regex, chrono
+  - axum, tower-http (HTTP API server)
+  - clap (CLI argument parsing)
 
 ================================================================================
 KEY FILES - FRONTEND (src/)
@@ -152,7 +186,8 @@ lib/
   types.ts         - TypeScript types matching Rust structs, includes
                      ExecutionPlan, ExecutionEvent, NodeProgress
   tauri.ts         - IPC command wrappers including file operations,
-                     validateFilePath() for frontend path validation
+                     validateFilePath() for frontend path validation,
+                     getApiPort() for HTTP API integration
   fileTree.ts      - Utilities for building file tree from nodes
 
 hooks/
@@ -176,7 +211,7 @@ components/
   layout/
     LeftPanel.tsx        - Collapsible & resizable left panel with:
                            toolbar (New, Open, Save, Settings), file tree,
-                           Generate All button
+                           Launch Agent button, Generate All button
     Canvas.tsx           - Main graph canvas area
     PropertiesPanel.tsx  - Right panel showing selected node or edge editor
     ResizablePanel.tsx   - Reusable resizable & collapsible panel wrapper
@@ -306,6 +341,40 @@ Build:
   cd needlepoint
   npm run tauri build
 
+Build CLI only:
+  cd src-tauri
+  cargo build --bin needlepoint-cli --release
+
+================================================================================
+CLI USAGE
+================================================================================
+
+The CLI communicates with the running Needlepoint app via HTTP API (port 9999).
+
+Commands:
+  needlepoint-cli status              # Check if Needlepoint is running
+  needlepoint-cli load <path>         # Load a project from YAML file
+  needlepoint-cli save                # Save current project
+  needlepoint-cli nodes               # List all nodes
+  needlepoint-cli node <id>           # Get details of a node
+  needlepoint-cli edges               # List all edges
+  needlepoint-cli plan                # Show execution plan (dependency order)
+  needlepoint-cli prompt <id>         # Preview prompt for a node
+  needlepoint-cli generate <id>       # Generate code for a node
+  needlepoint-cli generate-all        # Generate code for all nodes
+  needlepoint-cli set-keys --anthropic <key>  # Set API keys
+  needlepoint-cli project             # Get full project as JSON
+
+Options:
+  -p, --port <PORT>   # Use different port (default: 9999)
+
+Using with Claude Code:
+  1. Start Needlepoint GUI (npm run tauri dev)
+  2. Load or create a project in the GUI
+  3. Open a terminal in the project folder (Launch Agent button)
+  4. Run 'claude' to start Claude Code
+  5. Claude Code can use the CLI to interact with the project
+
 ================================================================================
 HOW TO TEST FEATURES
 ================================================================================
@@ -329,17 +398,27 @@ Multi-Selection:
 3. Confirm - all selected nodes deleted
 4. Ctrl+Z - all nodes restored at once
 
+CLI & HTTP API:
+1. Start Needlepoint (npm run tauri dev)
+2. In a separate terminal: needlepoint-cli status
+3. Should show "Status: ok" and "Project: none loaded"
+4. Open a project in the GUI
+5. Run: needlepoint-cli nodes - should list the project nodes
+6. Run: needlepoint-cli plan - should show execution order
+
 ================================================================================
-NEXT STEPS (Phase 6: Polish & Advanced Features)
+NEXT STEPS (Phase 7: Polish & Advanced Features)
 ================================================================================
 
-1. Project templates (starter graphs for common architectures)
-2. Validation hooks (run compile/lint after generation)
-3. Git integration (commit generated code)
-4. Settings & themes (dark/light mode, custom colors)
-5. Incremental generation (track changes, only regenerate affected nodes)
-6. Streaming support (show generation progress character-by-character)
-7. Additional keyboard shortcuts (see HOTKEY_SUGGESTIONS.txt)
+1. MCP server implementation (direct Claude Code tool integration)
+2. Embedded terminal (xterm.js) for agent interaction
+3. Project templates (starter graphs for common architectures)
+4. Validation hooks (run compile/lint after generation)
+5. Git integration (commit generated code)
+6. Settings & themes (dark/light mode, custom colors)
+7. Incremental generation (track changes, only regenerate affected nodes)
+8. Streaming support (show generation progress character-by-character)
+9. Additional keyboard shortcuts (see HOTKEY_SUGGESTIONS.txt)
 
 ================================================================================
 KNOWN ISSUES / WARNINGS

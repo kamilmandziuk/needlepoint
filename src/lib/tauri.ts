@@ -183,6 +183,17 @@ export async function createDirectory(projectPath: string, dirPath: string): Pro
 }
 
 // ============================================================================
+// API & Agent Integration
+// ============================================================================
+
+/**
+ * Get the HTTP API port that Needlepoint is running on
+ */
+export async function getApiPort(): Promise<number | null> {
+  return await invoke<number | null>('get_api_port');
+}
+
+// ============================================================================
 // Path Validation (Frontend)
 // ============================================================================
 

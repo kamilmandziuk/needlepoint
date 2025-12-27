@@ -1,6 +1,9 @@
-import { FolderOpen, Save, Plus, Play, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FolderOpen, Save, Plus, Play, Settings, ChevronLeft, ChevronRight, Terminal } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { open } from '@tauri-apps/plugin-shell';
 import { useProjectStore } from '../../stores/projectStore';
+import { useToastStore } from '../../stores/toastStore';
+import { getApiPort } from '../../lib/tauri';
 import FileTree from '../filetree/FileTree';
 
 interface LeftPanelProps {
@@ -14,10 +17,28 @@ const DEFAULT_WIDTH = 256;
 
 export default function LeftPanel({ onOpenSettings, onOpenExecutionMonitor }: LeftPanelProps) {
   const { project, loadProject, saveProject, createProject } = useProjectStore();
+  const { addToast } = useToastStore();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const launchAgent = useCallback(async () => {
+    if (!project) return;
+
+    try {
+      const port = await getApiPort();
+      const projectPath = project.projectPath;
+
+      // Open the project folder - user can then open terminal from there
+      await open(projectPath);
+
+      addToast(`Project folder opened. API on port ${port || 9999}. Open a terminal and run 'claude' to start.`, 'info');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      addToast(`Failed to open project folder: ${errorMsg}`, 'error');
+    }
+  }, [project, addToast]);
 
   const startResizing = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -66,6 +87,15 @@ export default function LeftPanel({ onOpenSettings, onOpenExecutionMonitor }: Le
         </button>
 
         <div className="flex-1" />
+
+        <button
+          onClick={launchAgent}
+          disabled={!project}
+          className="p-2 rounded hover:bg-gray-800 text-purple-500 hover:text-purple-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Launch Agent Terminal"
+        >
+          <Terminal size={16} />
+        </button>
 
         <button
           onClick={onOpenExecutionMonitor}
@@ -164,7 +194,15 @@ export default function LeftPanel({ onOpenSettings, onOpenExecutionMonitor }: Le
       </div>
 
       {/* Bottom Actions */}
-      <div className="border-t border-gray-800 p-2">
+      <div className="border-t border-gray-800 p-2 space-y-2">
+        <button
+          onClick={launchAgent}
+          disabled={!project}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded text-sm font-medium transition-colors disabled:cursor-not-allowed"
+        >
+          <Terminal size={16} />
+          Launch Agent
+        </button>
         <button
           onClick={onOpenExecutionMonitor}
           disabled={!project || project.nodes.length === 0}
