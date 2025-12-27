@@ -1,8 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Play, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { useProjectStore } from '../../stores/projectStore';
-import { useSettingsStore } from '../../stores/settingsStore';
-import { generateNode, validateFilePath } from '../../lib/tauri';
+import { validateFilePath } from '../../lib/tauri';
 import type { CodeNode } from '../../lib/types';
 import LLMConfigEditor from './LLMConfigEditor';
 import CodePreview from './CodePreview';
@@ -23,10 +22,8 @@ interface NodeEditorProps {
 type Tab = 'general' | 'llm' | 'code';
 
 export default function NodeEditor({ node }: NodeEditorProps) {
-  const { project, updateNode, deleteNode } = useProjectStore();
-  const { getApiKey } = useSettingsStore();
+  const { project, updateNode } = useProjectStore();
   const [activeTab, setActiveTab] = useState<Tab>('general');
-  const [isGenerating, setIsGenerating] = useState(false);
   const [pathError, setPathError] = useState<string | null>(null);
   const [filePathInput, setFilePathInput] = useState(node.filePath);
 
@@ -38,33 +35,6 @@ export default function NodeEditor({ node }: NodeEditorProps) {
     setFilePathInput(node.filePath);
     setPathError(null);
   }, [node.filePath]);
-
-  const handleGenerate = async () => {
-    if (!project) return;
-
-    setIsGenerating(true);
-    updateNode(node.id, { status: 'generating' });
-
-    try {
-      // Get API key from settings based on the node's LLM provider
-      const apiKey = getApiKey(node.llmConfig.provider);
-      const code = await generateNode(project, node.id, apiKey || undefined);
-      updateNode(node.id, {
-        generatedCode: code,
-        status: 'complete',
-        errorMessage: undefined,
-      });
-      setActiveTab('code');
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      updateNode(node.id, {
-        status: 'error',
-        errorMessage,
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
 
   const handleChange = (field: keyof CodeNode, value: string) => {
     // Validate file path before updating
@@ -108,41 +78,6 @@ export default function NodeEditor({ node }: NodeEditorProps) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-800">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold text-white truncate">{node.name}</h2>
-          <div className="flex gap-1">
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating}
-              className={`p-1.5 rounded ${
-                isGenerating
-                  ? 'text-gray-500 cursor-not-allowed'
-                  : 'hover:bg-gray-800 text-green-500 hover:text-green-400'
-              }`}
-              title={isGenerating ? 'Generating...' : 'Generate'}
-            >
-              {isGenerating ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Play size={16} />
-              )}
-            </button>
-            <button
-              onClick={() => deleteNode(node.id)}
-              className="p-1.5 rounded hover:bg-gray-800 text-red-500 hover:text-red-400"
-              title="Delete Node (moves to trash)"
-            >
-              <Trash2 size={16} />
-            </button>
-          </div>
-        </div>
-        <div className="text-xs text-gray-400 font-mono truncate">
-          {node.filePath}
-        </div>
-      </div>
-
       {/* Tabs */}
       <div className="flex border-b border-gray-800">
         {tabs.map((tab) => (

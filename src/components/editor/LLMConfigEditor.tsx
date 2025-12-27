@@ -130,7 +130,6 @@ export default function LLMConfigEditor({ config, onChange }: LLMConfigEditorPro
                 <input
                   value={constraint}
                   onChange={(e) => updateConstraint(index, e.target.value)}
-                  placeholder="e.g., Use async/await instead of callbacks"
                   className="flex-1 px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
                 <button
@@ -146,7 +145,7 @@ export default function LLMConfigEditor({ config, onChange }: LLMConfigEditorPro
         )}
 
         <p className="mt-2 text-xs text-gray-500">
-          Constraints are specific requirements the LLM must follow when generating code.
+          Specific requirements the LLM must follow. Examples: "Use async/await instead of callbacks", "Include JSDoc comments", "Follow REST naming conventions".
         </p>
       </div>
     </div>

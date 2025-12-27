@@ -1,5 +1,5 @@
 import { FolderOpen, Save, Plus, Play, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useProjectStore } from '../../stores/projectStore';
 import FileTree from '../filetree/FileTree';
 
@@ -8,9 +8,51 @@ interface LeftPanelProps {
   onOpenExecutionMonitor: () => void;
 }
 
+const MIN_WIDTH = 180;
+const MAX_WIDTH = 400;
+const DEFAULT_WIDTH = 256;
+
 export default function LeftPanel({ onOpenSettings, onOpenExecutionMonitor }: LeftPanelProps) {
   const { project, loadProject, saveProject, createProject } = useProjectStore();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const [isResizing, setIsResizing] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const startResizing = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  const stopResizing = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  const resize = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizing || !panelRef.current) return;
+
+      const panelRect = panelRef.current.getBoundingClientRect();
+      const newWidth = e.clientX - panelRect.left;
+
+      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
+        setWidth(newWidth);
+      }
+    },
+    [isResizing]
+  );
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', resize);
+      window.addEventListener('mouseup', stopResizing);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', resize);
+      window.removeEventListener('mouseup', stopResizing);
+    };
+  }, [isResizing, resize, stopResizing]);
 
   if (isCollapsed) {
     return (
@@ -46,7 +88,19 @@ export default function LeftPanel({ onOpenSettings, onOpenExecutionMonitor }: Le
   }
 
   return (
-    <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col relative z-10">
+    <aside
+      ref={panelRef}
+      className="bg-gray-900 border-r border-gray-800 flex flex-col relative z-10"
+      style={{ width }}
+    >
+      {/* Resize handle */}
+      <div
+        className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-20 transition-colors ${
+          isResizing ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-500/50'
+        }`}
+        onMouseDown={startResizing}
+      />
+
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
         <span className="text-sm font-medium text-gray-300 truncate">

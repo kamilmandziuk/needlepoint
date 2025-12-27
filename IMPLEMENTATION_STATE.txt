@@ -1,6 +1,6 @@
 ================================================================================
 NEEDLEPOINT - Implementation State
-Last Updated: 2025-12-25
+Last Updated: 2025-12-27
 ================================================================================
 
 PROJECT OVERVIEW
@@ -37,7 +37,7 @@ PHASE 2: Graph Editing - COMPLETE
 - Keyboard shortcuts (Delete/Backspace)
 - Cycle detection (frontend DFS + backend petgraph)
 - Validation indicators (orphan nodes, missing metadata)
-- Node metadata editor (General, Exports, LLM Config tabs)
+- Node metadata editor (General, LLM Config, Code tabs)
 
 PHASE 3: LLM Integration - COMPLETE
 - LLM Provider abstraction layer (trait-based)
@@ -62,7 +62,22 @@ PHASE 4: Parallel Orchestration - COMPLETE
 - Flexible edge labels (free-form text instead of fixed types)
 - Edge editor panel in properties sidebar
 
-PHASE 5: Polish & Advanced Features - NOT STARTED
+PHASE 5: UX & Safety - COMPLETE
+- Resizable and collapsible panels (both left and right)
+- Multi-selection with bulk delete
+- Toast notifications for user feedback
+- Selection persistence when moving nodes
+- File tree panel showing project structure
+- Auto-save (no manual save button in editor)
+- File system integration (create/rename/delete files with nodes)
+- Path sanitization (prevents directory traversal attacks)
+- Soft delete with trash folder (.needlepoint/trash/)
+- Duplicate path detection with auto-increment for new nodes
+- Undo/redo for deleted nodes (Ctrl+Z/Ctrl+Y)
+- Global keyboard shortcuts (Ctrl+S save, Ctrl+A select all)
+- Confirmation dialog for multi-node delete only
+
+PHASE 6: Polish & Advanced Features - NOT STARTED
 - Project templates
 - Validation hooks (compile/lint checks)
 - Git integration
@@ -85,6 +100,10 @@ commands/
                      check_would_create_cycle
   generation.rs    - generate_node(project, node_id, api_key), preview_prompt
   orchestration.rs - get_execution_plan, generate_all, generate_nodes
+  filesystem.rs    - File operations with path validation:
+                     create_file, write_file, delete_file (soft),
+                     delete_file_permanent, restore_file, list_trash,
+                     empty_trash, rename_file, file_exists, create_directory
 
 graph/
   mod.rs           - Module exports
@@ -114,7 +133,7 @@ Cargo.toml dependencies:
   - tauri, tauri-plugin-shell, tauri-plugin-dialog, tauri-plugin-store
   - serde, serde_yaml, serde_json
   - tokio, reqwest, async-trait, futures
-  - uuid, petgraph, anyhow, thiserror, regex
+  - uuid, petgraph, anyhow, thiserror, regex, chrono
 
 ================================================================================
 KEY FILES - FRONTEND (src/)
@@ -124,6 +143,7 @@ App.tsx
   - Root component
   - Manages settings panel and execution monitor visibility
   - Loads settings on startup
+  - Initializes global keyboard shortcuts
 
 main.tsx
   - React entry point
@@ -131,45 +151,68 @@ main.tsx
 lib/
   types.ts         - TypeScript types matching Rust structs, includes
                      ExecutionPlan, ExecutionEvent, NodeProgress
-  tauri.ts         - IPC command wrappers including getExecutionPlan,
-                     generateAll, generateNodes, onExecutionProgress
+  tauri.ts         - IPC command wrappers including file operations,
+                     validateFilePath() for frontend path validation
+  fileTree.ts      - Utilities for building file tree from nodes
+
+hooks/
+  useKeyboardShortcuts.ts - Global keyboard shortcuts:
+                            Ctrl+Z (undo), Ctrl+Y (redo), Ctrl+S (save),
+                            Ctrl+A (select all)
 
 stores/
-  projectStore.ts  - Zustand store for project state, includes cycle detection,
-                     selectedNodeId and selectedEdgeId
-  settingsStore.ts - Zustand store for settings, uses tauri-plugin-store for
-                     persistence (API keys, Ollama URL)
-  executionStore.ts - Zustand store for execution state, progress tracking,
-                      logs, event handling
+  projectStore.ts  - Zustand store for project state:
+                     - Multi-selection (selectedNodeIds array)
+                     - Cycle detection
+                     - File operations on node changes
+                     - Duplicate path detection with auto-increment
+                     - restoreDeletedNodes/reDeleteNodes for undo/redo
+  settingsStore.ts - Zustand store for settings, uses tauri-plugin-store
+  executionStore.ts - Zustand store for execution state, progress tracking
+  toastStore.ts    - Toast notification store (success, error, info)
+  undoStore.ts     - Undo/redo stack for delete operations
 
 components/
   layout/
-    Sidebar.tsx         - Left sidebar with New, Open, Save, Generate All,
-                          Settings buttons
-    Canvas.tsx          - Main graph canvas area
-    PropertiesPanel.tsx - Right panel showing selected node or edge editor
+    LeftPanel.tsx        - Collapsible & resizable left panel with:
+                           toolbar (New, Open, Save, Settings), file tree,
+                           Generate All button
+    Canvas.tsx           - Main graph canvas area
+    PropertiesPanel.tsx  - Right panel showing selected node or edge editor
+    ResizablePanel.tsx   - Reusable resizable & collapsible panel wrapper
+                           with toolbar slot
+    RightPanelToolbar.tsx - Toolbar for right panel with Generate, Stop,
+                            Delete buttons (context-aware for node/edge)
 
   graph/
     GraphCanvas.tsx     - ReactFlow wrapper with context menus, keyboard
-                          shortcuts, cycle detection, edge selection
+                          shortcuts, multi-selection, confirmation dialog
     CodeNode.tsx        - Custom node component with status colors and
-                          validation indicators
+                          validation badge (warnings only)
     DependencyEdge.tsx  - Custom edge component with wrapping labels
     ContextMenu.tsx     - Right-click context menu for nodes/edges
 
+  filetree/
+    FileTree.tsx        - File tree component showing project structure,
+                          collapsible folders, status colors
+
   editor/
-    NodeEditor.tsx      - Tabbed editor (General, Exports, LLM Config, Code)
-    EdgeEditor.tsx      - Edge properties editor with label input and templates
-    ExportsEditor.tsx   - Editor for function/class exports
+    NodeEditor.tsx      - Tabbed editor (General, LLM Config, Code)
+                          No header, tabs-only layout
+    EdgeEditor.tsx      - Edge properties editor with connection info,
+                          label input, and quick templates
     LLMConfigEditor.tsx - Editor for LLM provider, model, constraints
-    CodePreview.tsx     - Monaco editor with code/prompt tabs, generate button
+    CodePreview.tsx     - Monaco editor with code/prompt tabs
 
   execution/
-    ExecutionMonitor.tsx - Modal with progress bar, wave status, live logs,
-                           start/stop/retry controls
+    ExecutionMonitor.tsx - Modal with progress bar, wave status, live logs
 
   settings/
     SettingsPanel.tsx   - Modal for API key configuration
+
+  ui/
+    Toast.tsx           - Toast notification component
+    ConfirmDialog.tsx   - Reusable confirmation dialog
 
 ================================================================================
 CONFIGURATION FILES
@@ -188,40 +231,68 @@ package.json dependencies:
   - @tauri-apps/api, @tauri-apps/plugin-dialog, @tauri-apps/plugin-shell,
     @tauri-apps/plugin-store
   - @xyflow/react, @monaco-editor/react
-  - react, react-dom, react-hook-form
+  - react, react-dom
   - zustand, lucide-react
 
 tailwind.config.js
   - Custom colors for canvas background, node states
+  - Animation for toast slide-in
 
 ================================================================================
-RECENT CHANGES (Phase 4: Parallel Orchestration)
+RECENT CHANGES (Phase 5: UX & Safety)
 ================================================================================
 
-1. Orchestration Backend:
-   - planner.rs: Topological sort using Kahn's algorithm, groups nodes into
-     waves based on dependency depth
-   - executor.rs: Concurrent execution of waves using tokio/futures,
-     real-time progress via Tauri events
-   - events.rs: Event types (Started, WaveStarted, NodeUpdate, WaveCompleted,
-     Completed, Cancelled, Error)
+1. Panel System:
+   - LeftPanel: Replaced Sidebar, now collapsible AND resizable (180-400px)
+   - ResizablePanel: Reusable component with toolbar slot, collapse button
+   - Right panel: Collapsible with toolbar containing action buttons
+   - Consistent collapse button styling between panels
 
-2. Context-Aware Generation:
-   - context.rs now includes actual generated code from dependencies in prompts
-   - Dependent files can see and import from their dependency implementations
-   - Automatic stripping of markdown code blocks from LLM output
+2. File System Integration:
+   - Files created on disk when nodes are added
+   - Files renamed when node paths change
+   - Files soft-deleted (moved to .needlepoint/trash/) when nodes deleted
+   - Path validation prevents directory traversal attacks
+   - Duplicate path detection with auto-increment (file.ts -> file-1.ts)
 
-3. Execution Monitor UI:
-   - executionStore.ts: Manages execution state, listens to Tauri events
-   - ExecutionMonitor.tsx: Modal with progress bar, wave info, live log stream
-   - Visual node status updates during generation (pending/generating/complete/error)
+3. Undo/Redo System:
+   - undoStore tracks deleted nodes with edges and trash filenames
+   - Ctrl+Z restores deleted nodes (files restored from trash)
+   - Ctrl+Y re-deletes previously restored nodes
+   - Max 50 entries in undo stack
 
-4. Flexible Edge System:
-   - Removed fixed EdgeType enum (imports, implements, extends, etc.)
-   - Edges now have free-form text labels
-   - EdgeEditor.tsx: Properties panel for editing edge descriptions
-   - Quick template buttons for common relationship types
-   - Edge labels wrap properly on the graph
+4. Multi-Selection:
+   - selectedNodeIds array instead of single selectedNodeId
+   - Shift+click and drag-select for multiple nodes
+   - Bulk delete with confirmation dialog (single delete has no dialog)
+   - Selection persists when dragging nodes
+
+5. UI Cleanup:
+   - Removed Exports tab (redundant, auto-detected from code)
+   - Removed exports display from CodeNode
+   - Auto-save: onChange handlers instead of react-hook-form
+   - Toast notifications for save/restore/delete feedback
+   - Consistent text sizing in EdgeEditor
+   - Toolbar in right panel header (collapse left, actions right)
+
+================================================================================
+KEYBOARD SHORTCUTS
+================================================================================
+
+Global (useKeyboardShortcuts hook):
+  Ctrl+Z        - Undo (restore deleted nodes)
+  Ctrl+Y        - Redo (re-delete nodes)
+  Ctrl+Shift+Z  - Redo (alternative)
+  Ctrl+S        - Save project
+  Ctrl+A        - Select all nodes (when not in input field)
+
+Local (GraphCanvas):
+  Delete        - Delete selected nodes/edge
+  Backspace     - Delete selected nodes/edge
+  Escape        - Deselect all, close context menu
+
+Future (see HOTKEY_SUGGESTIONS.txt):
+  Ctrl+D, Ctrl+N, F2, F5, Ctrl+0, etc.
 
 ================================================================================
 HOW TO RUN
@@ -236,27 +307,30 @@ Build:
   npm run tauri build
 
 ================================================================================
-HOW TO TEST PARALLEL GENERATION
+HOW TO TEST FEATURES
 ================================================================================
 
-1. Run the app: npm run tauri dev
-2. Click Settings (gear icon) and enter your Anthropic API key
-3. Create a new project or open existing
-4. Add multiple nodes with dependencies:
-   - Node A: Base types/utilities (no dependencies)
-   - Node B: Depends on A (connect A -> B)
-   - Node C: Depends on A (connect A -> C)
-   - Node D: Depends on B and C (connect B -> D, C -> D)
-5. Click the green Play button in sidebar to open Execution Monitor
-6. Click "Start" to begin generation
-7. Watch:
-   - Wave 1: Node A generates first
-   - Wave 2: Nodes B and C generate in parallel
-   - Wave 3: Node D generates (has access to B and C code)
-8. Check that generated code correctly imports from dependencies
+File System:
+1. Create a new project (select empty folder)
+2. Add nodes - files should appear in folder
+3. Rename node file path - file should rename
+4. Delete node - file moves to .needlepoint/trash/
+5. Ctrl+Z - node and file restored
+
+Undo/Redo:
+1. Create several nodes
+2. Delete a node (single or multi-select)
+3. Press Ctrl+Z - node restored
+4. Press Ctrl+Y - node deleted again
+
+Multi-Selection:
+1. Shift+click multiple nodes, or drag-select
+2. Press Delete - confirmation dialog appears
+3. Confirm - all selected nodes deleted
+4. Ctrl+Z - all nodes restored at once
 
 ================================================================================
-NEXT STEPS (Phase 5: Polish & Advanced Features)
+NEXT STEPS (Phase 6: Polish & Advanced Features)
 ================================================================================
 
 1. Project templates (starter graphs for common architectures)
@@ -265,6 +339,7 @@ NEXT STEPS (Phase 5: Polish & Advanced Features)
 4. Settings & themes (dark/light mode, custom colors)
 5. Incremental generation (track changes, only regenerate affected nodes)
 6. Streaming support (show generation progress character-by-character)
+7. Additional keyboard shortcuts (see HOTKEY_SUGGESTIONS.txt)
 
 ================================================================================
 KNOWN ISSUES / WARNINGS
@@ -274,6 +349,7 @@ KNOWN ISSUES / WARNINGS
 - No streaming support yet (responses come all at once)
 - No validation/compile checks after generation
 - Cancel button in execution monitor doesn't actually cancel in-flight requests
+- Stop button in right panel toolbar is placeholder only
 
 ================================================================================
 GIT REPOSITORY

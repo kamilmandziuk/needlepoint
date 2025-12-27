@@ -4,8 +4,9 @@ import type {
   CodeNode,
   CodeEdge,
 } from '../lib/types';
-import { loadProjectFromPath, saveProjectToPath, selectProjectFolder, createFile, writeFile, deleteFile, renameFile } from '../lib/tauri';
+import { loadProjectFromPath, saveProjectToPath, selectProjectFolder, createFile, writeFile, deleteFile, renameFile, restoreFile } from '../lib/tauri';
 import { useToastStore } from './toastStore';
+import { useUndoStore, type DeletedNodeInfo } from './undoStore';
 
 /**
  * Check if a file path already exists in the project (excluding a specific node)
@@ -144,6 +145,8 @@ interface ProjectState {
   updateNode: (id: string, updates: Partial<CodeNode>) => void;
   deleteNode: (id: string) => void;
   deleteSelectedNodes: () => void;
+  restoreDeletedNodes: (deletedNodes: DeletedNodeInfo[]) => Promise<void>;
+  reDeleteNodes: (deletedNodes: DeletedNodeInfo[]) => Promise<void>;
   addEdge: (edge: Omit<CodeEdge, 'id'>) => { success: boolean; error?: string };
   updateEdge: (id: string, updates: Partial<CodeEdge>) => void;
   deleteEdge: (id: string) => void;
@@ -295,6 +298,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (!project) return;
 
     const nodeToDelete = project.nodes.find((n) => n.id === id);
+    if (!nodeToDelete) return;
+
+    // Capture connected edges before deletion
+    const connectedEdges = project.edges.filter(
+      (edge) => edge.source === id || edge.target === id
+    );
 
     set({
       project: {
@@ -307,12 +316,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       selectedNodeIds: selectedNodeIds.filter((nodeId) => nodeId !== id),
     });
 
-    // Delete the file from disk
-    if (nodeToDelete) {
-      deleteFile(project.projectPath, nodeToDelete.filePath).catch((err) => {
+    // Delete the file from disk and track for undo
+    deleteFile(project.projectPath, nodeToDelete.filePath)
+      .then((trashFilename) => {
+        // Push to undo stack
+        useUndoStore.getState().pushDeleteAction([
+          {
+            node: nodeToDelete,
+            connectedEdges,
+            trashFilename,
+          },
+        ]);
+      })
+      .catch((err) => {
         console.error('Failed to delete file:', err);
       });
-    }
   },
 
   deleteSelectedNodes: () => {
@@ -321,6 +339,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     const idsToDelete = new Set(selectedNodeIds);
     const nodesToDelete = project.nodes.filter((node) => idsToDelete.has(node.id));
+
+    // Capture connected edges for each node before deletion
+    const nodeEdgesMap = new Map<string, CodeEdge[]>();
+    for (const node of nodesToDelete) {
+      nodeEdgesMap.set(
+        node.id,
+        project.edges.filter((e) => e.source === node.id || e.target === node.id)
+      );
+    }
 
     set({
       project: {
@@ -333,12 +360,107 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       selectedNodeIds: [],
     });
 
-    // Delete files from disk
-    for (const node of nodesToDelete) {
-      deleteFile(project.projectPath, node.filePath).catch((err) => {
-        console.error('Failed to delete file:', err);
-      });
+    // Delete files from disk and track for undo
+    const deletePromises = nodesToDelete.map((node) =>
+      deleteFile(project.projectPath, node.filePath)
+        .then((trashFilename): DeletedNodeInfo => ({
+          node,
+          connectedEdges: nodeEdgesMap.get(node.id) || [],
+          trashFilename,
+        }))
+        .catch((err) => {
+          console.error('Failed to delete file:', err);
+          return null;
+        })
+    );
+
+    Promise.all(deletePromises).then((results) => {
+      const deletedNodes = results.filter((r): r is DeletedNodeInfo => r !== null);
+      if (deletedNodes.length > 0) {
+        useUndoStore.getState().pushDeleteAction(deletedNodes);
+      }
+    });
+  },
+
+  restoreDeletedNodes: async (deletedNodes) => {
+    const { project } = get();
+    if (!project) return;
+
+    // Restore files from trash
+    const restorePromises = deletedNodes.map((info) =>
+      restoreFile(project.projectPath, info.trashFilename, info.node.filePath).catch((err) => {
+        console.error('Failed to restore file:', err);
+      })
+    );
+
+    await Promise.all(restorePromises);
+
+    // Restore nodes and edges to project
+    const restoredNodes = deletedNodes.map((info) => info.node);
+    const allEdges = deletedNodes.flatMap((info) => info.connectedEdges);
+
+    // Deduplicate edges (same edge might be in multiple nodes' connectedEdges)
+    const uniqueEdges = Array.from(
+      new Map(allEdges.map((e) => [e.id, e])).values()
+    );
+
+    // Filter out edges that connect to nodes not in the project
+    const existingNodeIds = new Set([
+      ...project.nodes.map((n) => n.id),
+      ...restoredNodes.map((n) => n.id),
+    ]);
+    const validEdges = uniqueEdges.filter(
+      (e) => existingNodeIds.has(e.source) && existingNodeIds.has(e.target)
+    );
+
+    set({
+      project: {
+        ...project,
+        nodes: [...project.nodes, ...restoredNodes],
+        edges: [...project.edges, ...validEdges],
+      },
+    });
+
+    const nodeCount = restoredNodes.length;
+    useToastStore.getState().addToast(
+      `Restored ${nodeCount} node${nodeCount !== 1 ? 's' : ''}`,
+      'success'
+    );
+  },
+
+  reDeleteNodes: async (deletedNodes) => {
+    const { project } = get();
+    if (!project) return;
+
+    const nodeIds = new Set(deletedNodes.map((info) => info.node.id));
+
+    // Remove nodes and their edges from project
+    set({
+      project: {
+        ...project,
+        nodes: project.nodes.filter((n) => !nodeIds.has(n.id)),
+        edges: project.edges.filter(
+          (e) => !nodeIds.has(e.source) && !nodeIds.has(e.target)
+        ),
+      },
+    });
+
+    // Delete files again (they were restored, now delete them)
+    for (const info of deletedNodes) {
+      try {
+        const newTrashFilename = await deleteFile(project.projectPath, info.node.filePath);
+        // Update the trash filename in the info for future undo/redo
+        info.trashFilename = newTrashFilename;
+      } catch (err) {
+        console.error('Failed to re-delete file:', err);
+      }
     }
+
+    const nodeCount = deletedNodes.length;
+    useToastStore.getState().addToast(
+      `Deleted ${nodeCount} node${nodeCount !== 1 ? 's' : ''}`,
+      'info'
+    );
   },
 
   addEdge: (edgeData) => {

@@ -1,0 +1,36 @@
+Hotkey Suggestions for Needlepoint
+===================================
+
+HIGH PRIORITY (Common Expectations)
+-----------------------------------
+Ctrl+D          Duplicate selected node(s)
+Ctrl+C/Ctrl+V   Copy/Paste nodes
+Ctrl+N          Create new node
+Ctrl+O          Open project
+F2              Rename selected node
+Escape          Deselect all / Close dialogs
+
+EXECUTION
+---------
+F5 or Ctrl+Enter           Generate selected node(s)
+Shift+F5 or Ctrl+Shift+Enter   Generate all nodes
+
+VIEW/NAVIGATION
+---------------
+Ctrl+0          Fit view to all nodes
+Ctrl+=/Ctrl+-   Zoom in/out
+Home            Center view on selection
+Ctrl+F          Search/filter nodes
+
+PANEL MANAGEMENT
+----------------
+Ctrl+B          Toggle left panel (file tree)
+Ctrl+`          Toggle right panel (properties)
+Ctrl+,          Open settings
+
+GRAPH-SPECIFIC
+--------------
+Ctrl+L          Auto-layout graph
+Tab/Shift+Tab   Cycle through nodes
+Ctrl+Shift+A    Select all connected nodes
+Ctrl+E          Select all downstream dependencies
