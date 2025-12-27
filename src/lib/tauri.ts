@@ -105,3 +105,116 @@ export async function onExecutionProgress(
     callback(event.payload);
   });
 }
+
+// ============================================================================
+// File System Operations
+// ============================================================================
+
+/**
+ * Create a file and its parent directories if they don't exist
+ */
+export async function createFile(projectPath: string, filePath: string): Promise<void> {
+  await invoke('create_file', { projectPath, filePath });
+}
+
+/**
+ * Write content to a file, creating directories as needed
+ */
+export async function writeFile(projectPath: string, filePath: string, content: string): Promise<void> {
+  await invoke('write_file', { projectPath, filePath, content });
+}
+
+/**
+ * Soft delete a file (moves to trash)
+ * Returns the trash filename for potential restoration
+ */
+export async function deleteFile(projectPath: string, filePath: string): Promise<string> {
+  return await invoke<string>('delete_file', { projectPath, filePath });
+}
+
+/**
+ * Permanently delete a file (bypasses trash)
+ */
+export async function deleteFilePermanent(projectPath: string, filePath: string): Promise<void> {
+  await invoke('delete_file_permanent', { projectPath, filePath });
+}
+
+/**
+ * Restore a file from trash
+ */
+export async function restoreFile(projectPath: string, trashFilename: string, originalPath: string): Promise<void> {
+  await invoke('restore_file', { projectPath, trashFilename, originalPath });
+}
+
+/**
+ * List files in trash
+ */
+export async function listTrash(projectPath: string): Promise<string[]> {
+  return await invoke<string[]>('list_trash', { projectPath });
+}
+
+/**
+ * Empty the trash (permanently delete all trashed files)
+ * Returns the number of files deleted
+ */
+export async function emptyTrash(projectPath: string): Promise<number> {
+  return await invoke<number>('empty_trash', { projectPath });
+}
+
+/**
+ * Rename/move a file
+ */
+export async function renameFile(projectPath: string, oldPath: string, newPath: string): Promise<void> {
+  await invoke('rename_file', { projectPath, oldPath, newPath });
+}
+
+/**
+ * Check if a file exists
+ */
+export async function fileExists(projectPath: string, filePath: string): Promise<boolean> {
+  return await invoke<boolean>('file_exists', { projectPath, filePath });
+}
+
+/**
+ * Create a directory and its parents
+ */
+export async function createDirectory(projectPath: string, dirPath: string): Promise<void> {
+  await invoke('create_directory', { projectPath, dirPath });
+}
+
+// ============================================================================
+// Path Validation (Frontend)
+// ============================================================================
+
+/**
+ * Validate a file path on the frontend before sending to backend
+ * Returns an error message if invalid, or null if valid
+ */
+export function validateFilePath(filePath: string): string | null {
+  if (!filePath || filePath.trim() === '') {
+    return 'File path cannot be empty';
+  }
+
+  // Check for null bytes
+  if (filePath.includes('\0')) {
+    return 'File path contains invalid characters';
+  }
+
+  // Check for absolute paths
+  if (filePath.startsWith('/') || /^[A-Za-z]:/.test(filePath)) {
+    return 'Absolute paths are not allowed';
+  }
+
+  // Check for directory traversal
+  const normalized = filePath.replace(/\\/g, '/');
+  if (normalized.includes('..')) {
+    return 'Path cannot contain ".." (directory traversal not allowed)';
+  }
+
+  // Check for invalid characters (Windows)
+  if (/[<>:"|?*]/.test(filePath)) {
+    return 'Path contains invalid characters';
+  }
+
+  return null;
+}

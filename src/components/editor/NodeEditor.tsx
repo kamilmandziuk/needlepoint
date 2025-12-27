@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Play, Trash2, Loader2 } from 'lucide-react';
+import { Play, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import { useProjectStore } from '../../stores/projectStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { generateNode } from '../../lib/tauri';
+import { generateNode, validateFilePath } from '../../lib/tauri';
 import type { CodeNode } from '../../lib/types';
 import LLMConfigEditor from './LLMConfigEditor';
 import CodePreview from './CodePreview';
@@ -18,6 +18,7 @@ export default function NodeEditor({ node }: NodeEditorProps) {
   const { getApiKey } = useSettingsStore();
   const [activeTab, setActiveTab] = useState<Tab>('general');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [pathError, setPathError] = useState<string | null>(null);
 
   const handleGenerate = async () => {
     if (!project) return;
@@ -47,7 +48,26 @@ export default function NodeEditor({ node }: NodeEditorProps) {
   };
 
   const handleChange = (field: keyof CodeNode, value: string) => {
+    // Validate file path before updating
+    if (field === 'filePath') {
+      const error = validateFilePath(value);
+      setPathError(error);
+      if (error) {
+        return; // Don't update if path is invalid
+      }
+    }
     updateNode(node.id, { [field]: value });
+  };
+
+  const handleFilePathChange = (value: string) => {
+    // Always show current value in input, but validate
+    const error = validateFilePath(value);
+    setPathError(error);
+
+    // Only update the actual node if valid
+    if (!error) {
+      updateNode(node.id, { filePath: value });
+    }
   };
 
   const tabs: { id: Tab; label: string }[] = [
@@ -82,7 +102,7 @@ export default function NodeEditor({ node }: NodeEditorProps) {
             <button
               onClick={() => deleteNode(node.id)}
               className="p-1.5 rounded hover:bg-gray-800 text-red-500 hover:text-red-400"
-              title="Delete Node"
+              title="Delete Node (moves to trash)"
             >
               <Trash2 size={16} />
             </button>
@@ -133,9 +153,19 @@ export default function NodeEditor({ node }: NodeEditorProps) {
             </label>
             <input
               value={node.filePath}
-              onChange={(e) => handleChange('filePath', e.target.value)}
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => handleFilePathChange(e.target.value)}
+              className={`w-full px-3 py-2 bg-gray-800 border rounded-md text-white text-sm font-mono focus:outline-none focus:ring-2 ${
+                pathError
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-700 focus:ring-blue-500'
+              }`}
             />
+            {pathError && (
+              <div className="mt-1 flex items-center gap-1 text-xs text-red-400">
+                <AlertCircle size={12} />
+                {pathError}
+              </div>
+            )}
           </div>
 
           <div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
-import Sidebar from './components/layout/Sidebar';
+import LeftPanel from './components/layout/LeftPanel';
 import Canvas from './components/layout/Canvas';
 import PropertiesPanel from './components/layout/PropertiesPanel';
 import ResizablePanel from './components/layout/ResizablePanel';
@@ -22,7 +22,7 @@ function App() {
   return (
     <ReactFlowProvider>
       <div className="flex h-screen w-full bg-canvas-bg">
-        <Sidebar
+        <LeftPanel
           onOpenSettings={() => setShowSettings(true)}
           onOpenExecutionMonitor={() => setShowExecutionMonitor(true)}
         />

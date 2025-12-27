@@ -20,6 +20,7 @@ import { useProjectStore } from '../../stores/projectStore';
 import CodeNode from './CodeNode';
 import DependencyEdge from './DependencyEdge';
 import ContextMenu from './ContextMenu';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import type { ContextMenuOption } from './ContextMenu';
 import type { CodeNode as CodeNodeType, CodeEdge, NodeStatus } from '../../lib/types';
 
@@ -85,6 +86,7 @@ function GraphCanvasInner() {
   } = useProjectStore();
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const reactFlowInstance = useReactFlow();
 
@@ -122,8 +124,12 @@ function GraphCanvasInner() {
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       if (event.key === 'Delete' || event.key === 'Backspace') {
-        // Delete selected nodes (supports multi-selection)
-        if (selectedNodeIds.length > 0) {
+        // Multi-select delete: show confirmation dialog
+        if (selectedNodeIds.length > 1) {
+          setShowDeleteConfirm(true);
+        }
+        // Single node delete: direct delete (goes to trash)
+        else if (selectedNodeIds.length === 1) {
           deleteSelectedNodes();
         }
         // Delete selected edge
@@ -137,10 +143,17 @@ function GraphCanvasInner() {
         setSelectedNodes([]);
         setSelectedEdge(null);
         closeContextMenu();
+        setShowDeleteConfirm(false);
       }
     },
     [selectedNodeIds, selectedEdgeId, deleteSelectedNodes, deleteEdge, setSelectedNodes, setSelectedEdge, closeContextMenu]
   );
+
+  // Handle multi-delete confirmation
+  const handleDeleteConfirm = useCallback(() => {
+    deleteSelectedNodes();
+    setShowDeleteConfirm(false);
+  }, [deleteSelectedNodes]);
 
   // Sync ReactFlow state back to project store
   const handleNodesChange = useCallback(
@@ -459,6 +472,18 @@ function GraphCanvasInner() {
           onClose={closeContextMenu}
         />
       )}
+
+      {/* Multi-Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Multiple Nodes"
+        message={`Are you sure you want to delete ${selectedNodeIds.length} nodes? The files will be moved to trash and can be restored later.`}
+        confirmLabel={`Delete ${selectedNodeIds.length} nodes`}
+        cancelLabel="Cancel"
+        danger
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }

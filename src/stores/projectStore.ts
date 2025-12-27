@@ -4,7 +4,7 @@ import type {
   CodeNode,
   CodeEdge,
 } from '../lib/types';
-import { loadProjectFromPath, saveProjectToPath, selectProjectFolder } from '../lib/tauri';
+import { loadProjectFromPath, saveProjectToPath, selectProjectFolder, createFile, writeFile, deleteFile, renameFile } from '../lib/tauri';
 import { useToastStore } from './toastStore';
 
 // Check if adding an edge would create a cycle using DFS
@@ -179,25 +179,54 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         nodes: [...project.nodes, newNode],
       },
     });
+
+    // Create the file on disk (fire and forget)
+    createFile(project.projectPath, newNode.filePath).catch((err) => {
+      console.error('Failed to create file:', err);
+      useToastStore.getState().addToast(`Failed to create file: ${newNode.filePath}`, 'error');
+    });
   },
 
   updateNode: (id, updates) => {
     const { project } = get();
     if (!project) return;
 
+    const oldNode = project.nodes.find((n) => n.id === id);
+    if (!oldNode) return;
+
+    const newNode = { ...oldNode, ...updates };
+
     set({
       project: {
         ...project,
         nodes: project.nodes.map((node) =>
-          node.id === id ? { ...node, ...updates } : node
+          node.id === id ? newNode : node
         ),
       },
     });
+
+    // Handle file path changes (rename)
+    if (updates.filePath && updates.filePath !== oldNode.filePath) {
+      renameFile(project.projectPath, oldNode.filePath, updates.filePath).catch((err) => {
+        console.error('Failed to rename file:', err);
+        useToastStore.getState().addToast(`Failed to rename file`, 'error');
+      });
+    }
+
+    // Write generated code to file when it's updated
+    if (updates.generatedCode !== undefined && updates.generatedCode !== oldNode.generatedCode) {
+      writeFile(project.projectPath, newNode.filePath, updates.generatedCode).catch((err) => {
+        console.error('Failed to write file:', err);
+        useToastStore.getState().addToast(`Failed to write generated code`, 'error');
+      });
+    }
   },
 
   deleteNode: (id) => {
     const { project, selectedNodeIds } = get();
     if (!project) return;
+
+    const nodeToDelete = project.nodes.find((n) => n.id === id);
 
     set({
       project: {
@@ -209,6 +238,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       },
       selectedNodeIds: selectedNodeIds.filter((nodeId) => nodeId !== id),
     });
+
+    // Delete the file from disk
+    if (nodeToDelete) {
+      deleteFile(project.projectPath, nodeToDelete.filePath).catch((err) => {
+        console.error('Failed to delete file:', err);
+      });
+    }
   },
 
   deleteSelectedNodes: () => {
@@ -216,6 +252,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (!project || selectedNodeIds.length === 0) return;
 
     const idsToDelete = new Set(selectedNodeIds);
+    const nodesToDelete = project.nodes.filter((node) => idsToDelete.has(node.id));
 
     set({
       project: {
@@ -227,6 +264,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       },
       selectedNodeIds: [],
     });
+
+    // Delete files from disk
+    for (const node of nodesToDelete) {
+      deleteFile(project.projectPath, node.filePath).catch((err) => {
+        console.error('Failed to delete file:', err);
+      });
+    }
   },
 
   addEdge: (edgeData) => {
