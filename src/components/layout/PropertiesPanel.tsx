@@ -3,10 +3,11 @@ import NodeEditor from '../editor/NodeEditor';
 import EdgeEditor from '../editor/EdgeEditor';
 
 export default function PropertiesPanel() {
-  const { selectedNodeId, selectedEdgeId, project } = useProjectStore();
+  const { selectedNodeIds, selectedEdgeId, project } = useProjectStore();
 
-  const selectedNode = selectedNodeId
-    ? project?.nodes.find((n) => n.id === selectedNodeId)
+  // Get the single selected node (only show editor for single selection)
+  const selectedNode = selectedNodeIds.length === 1
+    ? project?.nodes.find((n) => n.id === selectedNodeIds[0])
     : null;
 
   const selectedEdge = selectedEdgeId
@@ -16,27 +17,39 @@ export default function PropertiesPanel() {
   // Show edge editor if edge is selected
   if (selectedEdge) {
     return (
-      <aside className="w-80 bg-gray-900 border-l border-gray-800 overflow-y-auto">
+      <div className="h-full bg-gray-900 border-l border-gray-800 overflow-y-auto">
         <EdgeEditor edge={selectedEdge} />
-      </aside>
+      </div>
     );
   }
 
-  // Show node editor if node is selected
+  // Show node editor if exactly one node is selected
   if (selectedNode) {
     return (
-      <aside className="w-80 bg-gray-900 border-l border-gray-800 overflow-y-auto">
+      <div className="h-full bg-gray-900 border-l border-gray-800 overflow-y-auto">
         <NodeEditor key={selectedNode.id} node={selectedNode} />
-      </aside>
+      </div>
+    );
+  }
+
+  // Show multi-selection info
+  if (selectedNodeIds.length > 1) {
+    return (
+      <div className="h-full bg-gray-900 border-l border-gray-800 p-4">
+        <div className="text-gray-400 text-sm text-center mt-8">
+          <div className="text-white font-medium mb-2">{selectedNodeIds.length} nodes selected</div>
+          <div className="text-gray-500">Press Delete to remove all selected nodes</div>
+        </div>
+      </div>
     );
   }
 
   // Show placeholder
   return (
-    <aside className="w-80 bg-gray-900 border-l border-gray-800 p-4">
+    <div className="h-full bg-gray-900 border-l border-gray-800 p-4">
       <div className="text-gray-500 text-sm text-center mt-8">
         Select a node or edge to view its properties
       </div>
-    </aside>
+    </div>
   );
 }

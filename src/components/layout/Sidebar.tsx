@@ -10,7 +10,7 @@ export default function Sidebar({ onOpenSettings, onOpenExecutionMonitor }: Side
   const { project, loadProject, saveProject, createProject } = useProjectStore();
 
   return (
-    <aside className="w-16 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-4 gap-2">
+    <aside className="w-16 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-4 gap-2 relative z-10">
       <button
         onClick={createProject}
         className="p-3 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"

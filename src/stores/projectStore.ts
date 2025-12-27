@@ -5,6 +5,7 @@ import type {
   CodeEdge,
 } from '../lib/types';
 import { loadProjectFromPath, saveProjectToPath, selectProjectFolder } from '../lib/tauri';
+import { useToastStore } from './toastStore';
 
 // Check if adding an edge would create a cycle using DFS
 function wouldCreateCycle(
@@ -73,14 +74,14 @@ function wouldCreateCycle(
 
 interface ProjectState {
   project: Project | null;
-  selectedNodeId: string | null;
+  selectedNodeIds: string[];
   selectedEdgeId: string | null;
   isLoading: boolean;
   error: string | null;
 
   // Actions
   setProject: (project: Project | null) => void;
-  setSelectedNode: (nodeId: string | null) => void;
+  setSelectedNodes: (nodeIds: string[]) => void;
   setSelectedEdge: (edgeId: string | null) => void;
   createProject: () => Promise<void>;
   loadProject: () => Promise<void>;
@@ -88,6 +89,7 @@ interface ProjectState {
   addNode: (node: Omit<CodeNode, 'id'>) => void;
   updateNode: (id: string, updates: Partial<CodeNode>) => void;
   deleteNode: (id: string) => void;
+  deleteSelectedNodes: () => void;
   addEdge: (edge: Omit<CodeEdge, 'id'>) => { success: boolean; error?: string };
   updateEdge: (id: string, updates: Partial<CodeEdge>) => void;
   deleteEdge: (id: string) => void;
@@ -95,16 +97,16 @@ interface ProjectState {
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   project: null,
-  selectedNodeId: null,
+  selectedNodeIds: [],
   selectedEdgeId: null,
   isLoading: false,
   error: null,
 
   setProject: (project) => set({ project }),
 
-  setSelectedNode: (nodeId) => set({ selectedNodeId: nodeId, selectedEdgeId: null }),
+  setSelectedNodes: (nodeIds) => set({ selectedNodeIds: nodeIds, selectedEdgeId: null }),
 
-  setSelectedEdge: (edgeId) => set({ selectedEdgeId: edgeId, selectedNodeId: null }),
+  setSelectedEdge: (edgeId) => set({ selectedEdgeId: edgeId, selectedNodeIds: [] }),
 
   createProject: async () => {
     try {
@@ -126,7 +128,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         projectPath: path,
       };
 
-      set({ project: newProject, selectedNodeId: null, error: null });
+      set({ project: newProject, selectedNodeIds: [], error: null });
     } catch (error) {
       set({ error: String(error) });
     }
@@ -137,7 +139,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const project = await loadProjectFromPath();
       if (project) {
-        set({ project, selectedNodeId: null });
+        set({ project, selectedNodeIds: [] });
       }
     } catch (error) {
       set({ error: String(error) });
@@ -153,8 +155,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await saveProjectToPath(project);
+      useToastStore.getState().addToast('Project saved', 'success');
     } catch (error) {
       set({ error: String(error) });
+      useToastStore.getState().addToast('Failed to save project', 'error');
     } finally {
       set({ isLoading: false });
     }
@@ -192,7 +196,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   deleteNode: (id) => {
-    const { project, selectedNodeId } = get();
+    const { project, selectedNodeIds } = get();
     if (!project) return;
 
     set({
@@ -203,7 +207,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           (edge) => edge.source !== id && edge.target !== id
         ),
       },
-      selectedNodeId: selectedNodeId === id ? null : selectedNodeId,
+      selectedNodeIds: selectedNodeIds.filter((nodeId) => nodeId !== id),
+    });
+  },
+
+  deleteSelectedNodes: () => {
+    const { project, selectedNodeIds } = get();
+    if (!project || selectedNodeIds.length === 0) return;
+
+    const idsToDelete = new Set(selectedNodeIds);
+
+    set({
+      project: {
+        ...project,
+        nodes: project.nodes.filter((node) => !idsToDelete.has(node.id)),
+        edges: project.edges.filter(
+          (edge) => !idsToDelete.has(edge.source) && !idsToDelete.has(edge.target)
+        ),
+      },
+      selectedNodeIds: [],
     });
   },
 

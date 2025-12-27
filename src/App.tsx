@@ -3,8 +3,10 @@ import { ReactFlowProvider } from '@xyflow/react';
 import Sidebar from './components/layout/Sidebar';
 import Canvas from './components/layout/Canvas';
 import PropertiesPanel from './components/layout/PropertiesPanel';
+import ResizablePanel from './components/layout/ResizablePanel';
 import SettingsPanel from './components/settings/SettingsPanel';
 import ExecutionMonitor from './components/execution/ExecutionMonitor';
+import ToastContainer from './components/ui/Toast';
 import { useSettingsStore } from './stores/settingsStore';
 
 function App() {
@@ -25,7 +27,9 @@ function App() {
           onOpenExecutionMonitor={() => setShowExecutionMonitor(true)}
         />
         <Canvas />
-        <PropertiesPanel />
+        <ResizablePanel defaultWidth={320} minWidth={240} maxWidth={600}>
+          <PropertiesPanel />
+        </ResizablePanel>
       </div>
 
       {showSettings && (
@@ -35,6 +39,8 @@ function App() {
       {showExecutionMonitor && (
         <ExecutionMonitor onClose={() => setShowExecutionMonitor(false)} />
       )}
+
+      <ToastContainer />
     </ReactFlowProvider>
   );
 }

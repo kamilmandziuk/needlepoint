@@ -10,6 +10,7 @@ import {
   Connection,
   BackgroundVariant,
   useReactFlow,
+  SelectionMode,
 } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -33,7 +34,7 @@ const edgeTypes: any = {
 };
 
 // Convert our CodeNode to ReactFlow Node
-function toFlowNode(node: CodeNodeType, edges: CodeEdge[], totalNodes: number): Node {
+function toFlowNode(node: CodeNodeType, edges: CodeEdge[], totalNodes: number, isSelected: boolean): Node {
   // Check if node is orphan (not connected to any edge)
   const isOrphan = totalNodes > 1 && !edges.some(
     (e) => e.source === node.id || e.target === node.id
@@ -43,6 +44,7 @@ function toFlowNode(node: CodeNodeType, edges: CodeEdge[], totalNodes: number): 
     id: node.id,
     type: 'codeNode',
     position: node.position,
+    selected: isSelected,
     data: { ...node, isOrphan } as unknown as Record<string, unknown>,
   };
 }
@@ -70,12 +72,13 @@ interface ContextMenuState {
 function GraphCanvasInner() {
   const {
     project,
-    selectedNodeId,
+    selectedNodeIds,
     selectedEdgeId,
-    setSelectedNode,
+    setSelectedNodes,
     setSelectedEdge,
     updateNode,
     deleteNode,
+    deleteSelectedNodes,
     addEdge: addProjectEdge,
     deleteEdge,
     addNode,
@@ -89,8 +92,9 @@ function GraphCanvasInner() {
   const flowNodes = useMemo(() => {
     const projectNodes = project?.nodes || [];
     const projectEdges = project?.edges || [];
-    return projectNodes.map((node) => toFlowNode(node, projectEdges, projectNodes.length));
-  }, [project?.nodes, project?.edges]);
+    const selectedSet = new Set(selectedNodeIds);
+    return projectNodes.map((node) => toFlowNode(node, projectEdges, projectNodes.length, selectedSet.has(node.id)));
+  }, [project?.nodes, project?.edges, selectedNodeIds]);
 
   const flowEdges = useMemo(
     () => (project?.edges || []).map((edge) => toFlowEdge(edge, edge.id === selectedEdgeId)),
@@ -118,10 +122,9 @@ function GraphCanvasInner() {
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       if (event.key === 'Delete' || event.key === 'Backspace') {
-        // Delete selected node
-        if (selectedNodeId) {
-          deleteNode(selectedNodeId);
-          setSelectedNode(null);
+        // Delete selected nodes (supports multi-selection)
+        if (selectedNodeIds.length > 0) {
+          deleteSelectedNodes();
         }
         // Delete selected edge
         if (selectedEdgeId) {
@@ -131,12 +134,12 @@ function GraphCanvasInner() {
       }
       // Escape to deselect and close context menu
       if (event.key === 'Escape') {
-        setSelectedNode(null);
+        setSelectedNodes([]);
         setSelectedEdge(null);
         closeContextMenu();
       }
     },
-    [selectedNodeId, selectedEdgeId, deleteNode, deleteEdge, setSelectedNode, setSelectedEdge, closeContextMenu]
+    [selectedNodeIds, selectedEdgeId, deleteSelectedNodes, deleteEdge, setSelectedNodes, setSelectedEdge, closeContextMenu]
   );
 
   // Sync ReactFlow state back to project store
@@ -176,10 +179,14 @@ function GraphCanvasInner() {
   const handleNodeClick = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (_: React.MouseEvent, node: any) => {
-      setSelectedNode(node.id);
+      // If node is already selected (part of multi-selection), don't change selection
+      // This allows dragging multiple selected nodes without losing selection
+      if (!selectedNodeIds.includes(node.id)) {
+        setSelectedNodes([node.id]);
+      }
       closeContextMenu();
     },
-    [setSelectedNode, closeContextMenu]
+    [selectedNodeIds, setSelectedNodes, closeContextMenu]
   );
 
   const handleEdgeClick = useCallback(
@@ -192,10 +199,23 @@ function GraphCanvasInner() {
   );
 
   const handlePaneClick = useCallback(() => {
-    setSelectedNode(null);
+    setSelectedNodes([]);
     setSelectedEdge(null);
     closeContextMenu();
-  }, [setSelectedNode, setSelectedEdge, closeContextMenu]);
+  }, [setSelectedNodes, setSelectedEdge, closeContextMenu]);
+
+  // Handle multi-selection from ReactFlow (shift+click, drag select)
+  // Only update when nodes are selected, not when cleared (pane click handles clearing)
+  const handleSelectionChange = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ({ nodes }: { nodes: any[] }) => {
+      if (nodes.length > 0) {
+        const nodeIds = nodes.map((n) => n.id);
+        setSelectedNodes(nodeIds);
+      }
+    },
+    [setSelectedNodes]
+  );
 
   // Add node at position
   const addNodeAtPosition = useCallback(
@@ -263,7 +283,10 @@ function GraphCanvasInner() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (event: React.MouseEvent, node: any) => {
       event.preventDefault();
-      setSelectedNode(node.id);
+      // If right-clicked node is not in selection, select only it
+      if (!selectedNodeIds.includes(node.id)) {
+        setSelectedNodes([node.id]);
+      }
       setContextMenu({
         x: event.clientX,
         y: event.clientY,
@@ -271,7 +294,7 @@ function GraphCanvasInner() {
         targetId: node.id,
       });
     },
-    [setSelectedNode]
+    [selectedNodeIds, setSelectedNodes]
   );
 
   // Context menu for edges
@@ -306,6 +329,7 @@ function GraphCanvasInner() {
 
     if (contextMenu.type === 'node' && contextMenu.targetId) {
       const nodeId = contextMenu.targetId;
+      const multipleSelected = selectedNodeIds.length > 1;
       return [
         {
           label: 'Generate Code',
@@ -323,14 +347,18 @@ function GraphCanvasInner() {
         {
           label: 'Edit Settings',
           icon: <Settings size={14} />,
-          onClick: () => setSelectedNode(nodeId),
+          onClick: () => setSelectedNodes([nodeId]),
         },
         {
-          label: 'Delete',
+          label: multipleSelected ? `Delete ${selectedNodeIds.length} nodes` : 'Delete',
           icon: <Trash2 size={14} />,
           onClick: () => {
-            deleteNode(nodeId);
-            setSelectedNode(null);
+            if (multipleSelected) {
+              deleteSelectedNodes();
+            } else {
+              deleteNode(nodeId);
+              setSelectedNodes([]);
+            }
           },
           danger: true,
         },
@@ -353,7 +381,7 @@ function GraphCanvasInner() {
     }
 
     return [];
-  }, [contextMenu, addNodeAtPosition, duplicateNode, deleteNode, deleteEdge, setSelectedNode]);
+  }, [contextMenu, addNodeAtPosition, duplicateNode, deleteNode, deleteSelectedNodes, deleteEdge, setSelectedNodes, selectedNodeIds]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getNodeColor = (node: any) => {
@@ -399,9 +427,12 @@ function GraphCanvasInner() {
         onPaneContextMenu={handlePaneContextMenu}
         onNodeContextMenu={handleNodeContextMenu}
         onEdgeContextMenu={handleEdgeContextMenu}
+        onSelectionChange={handleSelectionChange}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
+        selectionOnDrag
+        selectionMode={SelectionMode.Partial}
         proOptions={{ hideAttribution: true }}
         className="bg-canvas-bg"
         deleteKeyCode={null}
