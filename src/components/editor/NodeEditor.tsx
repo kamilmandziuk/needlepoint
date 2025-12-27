@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Play, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import { useProjectStore } from '../../stores/projectStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -6,6 +6,15 @@ import { generateNode, validateFilePath } from '../../lib/tauri';
 import type { CodeNode } from '../../lib/types';
 import LLMConfigEditor from './LLMConfigEditor';
 import CodePreview from './CodePreview';
+
+/**
+ * Check if a file path is a duplicate (exists in another node)
+ */
+function isPathDuplicate(nodes: CodeNode[], filePath: string, excludeNodeId: string): boolean {
+  return nodes.some(
+    (node) => node.filePath === filePath && node.id !== excludeNodeId
+  );
+}
 
 interface NodeEditorProps {
   node: CodeNode;
@@ -19,6 +28,16 @@ export default function NodeEditor({ node }: NodeEditorProps) {
   const [activeTab, setActiveTab] = useState<Tab>('general');
   const [isGenerating, setIsGenerating] = useState(false);
   const [pathError, setPathError] = useState<string | null>(null);
+  const [filePathInput, setFilePathInput] = useState(node.filePath);
+
+  // Get all nodes for duplicate checking
+  const allNodes = useMemo(() => project?.nodes || [], [project?.nodes]);
+
+  // Sync input with node when node changes (e.g., external updates)
+  useEffect(() => {
+    setFilePathInput(node.filePath);
+    setPathError(null);
+  }, [node.filePath]);
 
   const handleGenerate = async () => {
     if (!project) return;
@@ -60,14 +79,25 @@ export default function NodeEditor({ node }: NodeEditorProps) {
   };
 
   const handleFilePathChange = (value: string) => {
-    // Always show current value in input, but validate
-    const error = validateFilePath(value);
-    setPathError(error);
+    // Always update the input display
+    setFilePathInput(value);
 
-    // Only update the actual node if valid
-    if (!error) {
-      updateNode(node.id, { filePath: value });
+    // Validate format first
+    const formatError = validateFilePath(value);
+    if (formatError) {
+      setPathError(formatError);
+      return;
     }
+
+    // Check for duplicate paths (excluding current node)
+    if (isPathDuplicate(allNodes, value, node.id)) {
+      setPathError('This file path is already used by another node');
+      return;
+    }
+
+    // Clear error and update node
+    setPathError(null);
+    updateNode(node.id, { filePath: value });
   };
 
   const tabs: { id: Tab; label: string }[] = [
@@ -152,7 +182,7 @@ export default function NodeEditor({ node }: NodeEditorProps) {
               File Path
             </label>
             <input
-              value={node.filePath}
+              value={filePathInput}
               onChange={(e) => handleFilePathChange(e.target.value)}
               className={`w-full px-3 py-2 bg-gray-800 border rounded-md text-white text-sm font-mono focus:outline-none focus:ring-2 ${
                 pathError

@@ -7,6 +7,60 @@ import type {
 import { loadProjectFromPath, saveProjectToPath, selectProjectFolder, createFile, writeFile, deleteFile, renameFile } from '../lib/tauri';
 import { useToastStore } from './toastStore';
 
+/**
+ * Check if a file path already exists in the project (excluding a specific node)
+ */
+function isPathDuplicate(nodes: CodeNode[], filePath: string, excludeNodeId?: string): boolean {
+  return nodes.some(
+    (node) => node.filePath === filePath && node.id !== excludeNodeId
+  );
+}
+
+/**
+ * Generate a unique node name by incrementing a suffix
+ */
+function generateUniqueName(nodes: CodeNode[], baseName: string): string {
+  const existingNames = new Set(nodes.map((n) => n.name));
+
+  if (!existingNames.has(baseName)) {
+    return baseName;
+  }
+
+  let counter = 1;
+  while (existingNames.has(`${baseName}_${counter}`)) {
+    counter++;
+  }
+
+  return `${baseName}_${counter}`;
+}
+
+/**
+ * Generate a unique file path by incrementing a suffix
+ */
+function generateUniqueFilePath(nodes: CodeNode[], basePath: string): string {
+  const existingPaths = new Set(nodes.map((n) => n.filePath));
+
+  if (!existingPaths.has(basePath)) {
+    return basePath;
+  }
+
+  // Split path into directory, name, and extension
+  const lastSlash = basePath.lastIndexOf('/');
+  const dir = lastSlash >= 0 ? basePath.slice(0, lastSlash + 1) : '';
+  const filename = lastSlash >= 0 ? basePath.slice(lastSlash + 1) : basePath;
+
+  const lastDot = filename.lastIndexOf('.');
+  const name = lastDot >= 0 ? filename.slice(0, lastDot) : filename;
+  const ext = lastDot >= 0 ? filename.slice(lastDot) : '';
+
+  let counter = 1;
+  while (existingPaths.has(`${dir}${name}-${counter}${ext}`)) {
+    counter++;
+  }
+
+  return `${dir}${name}-${counter}${ext}`;
+}
+
 // Check if adding an edge would create a cycle using DFS
 function wouldCreateCycle(
   nodes: CodeNode[],
@@ -168,8 +222,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const { project } = get();
     if (!project) return;
 
+    // Generate unique name and file path to avoid duplicates
+    const uniqueName = generateUniqueName(project.nodes, nodeData.name);
+    const uniqueFilePath = generateUniqueFilePath(project.nodes, nodeData.filePath);
+
     const newNode: CodeNode = {
       ...nodeData,
+      name: uniqueName,
+      filePath: uniqueFilePath,
       id: crypto.randomUUID(),
     };
 
@@ -193,6 +253,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     const oldNode = project.nodes.find((n) => n.id === id);
     if (!oldNode) return;
+
+    // Check for duplicate file path (excluding the current node)
+    if (updates.filePath && updates.filePath !== oldNode.filePath) {
+      if (isPathDuplicate(project.nodes, updates.filePath, id)) {
+        useToastStore.getState().addToast(`File path already exists: ${updates.filePath}`, 'error');
+        return; // Reject the update
+      }
+    }
 
     const newNode = { ...oldNode, ...updates };
 
